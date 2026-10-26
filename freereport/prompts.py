@@ -178,3 +178,23 @@ COMMENT STATUS (JSON):
 
 CHANGES:
 {changes}"""
+
+RESUBMIT_SYSTEM_LIGHT = """You are part of FreeReport, a tool that helps academic authors check a revised manuscript before resubmitting it to a journal.
+This is a LIGHT check: the manuscript itself is NOT attached. Each task lists the CHANGES between the original and the revised
+version (found by a mechanical text comparison, ids C1, C2, ...; 'old' is the original text, 'new' the revised text).
+Judge only from the CHANGES list. If a change that a comment or claim needs is not visible there, say so plainly.
+Cite pages and quotes only from the 'new' text of the changes."""
+
+RESUBMIT_LETTER = """TASK: Below is the authors' own response letter. Check every concrete claim in it about what was changed in the
+manuscript (e.g. "we added a robustness table", "Equation 3 is corrected", "we now cluster standard errors") against the
+CHANGES list and the revised manuscript. Verify numbers yourself. Ignore thanks and general statements.
+Also list the referee comments the letter does not answer at all.
+
+REFEREE COMMENTS (JSON):
+{comments}
+
+THE AUTHORS' RESPONSE LETTER:
+{letter}
+
+CHANGES FROM THE ORIGINAL TO THE REVISED MANUSCRIPT:
+{changes}"""

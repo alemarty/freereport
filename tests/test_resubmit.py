@@ -124,3 +124,86 @@ def test_latex_letter_escapes_and_marks_todo():
     assert r"50\% \& p \textless{} 0.001, $\beta$ $\approx$ 0.4." in tex
     assert r"\textcolor{red}{\textbf{[TO DO: re-run table\_2]}}" in tex
     assert tex.index(r"\subsection*{Reviewer 1}") < tex.index(r"\subsection*{Report 2}")
+
+
+def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
+    from freereport import cli
+    seen = {}
+
+    class Dummy:
+        model, effort = "claude-opus-5-5", "high"
+        usage = Usage()
+
+        def __init__(self, paper, model, effort):
+            pass
+
+    def fake_audit(paper, backend, opts):
+        seen["opts"], seen["effort"] = opts, backend.effort
+        raise SystemExit(0)  # stop here: only the options matter
+
+    monkeypatch.setattr(cli, "ClaudeBackend", Dummy)
+    monkeypatch.setattr(cli, "audit", fake_audit)
+    args = ["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
+            "--reviews", str(REPORTS[0]), "--out", str(tmp_path)]
+    try:
+        cli.main(args + ["--deepdive", "--council"])
+    except SystemExit:
+        pass
+    assert seen["opts"].deepdive and seen["opts"].council and not seen["opts"].blindspot
+    assert seen["effort"] == "max"
+
+
+def test_resubmit_rejects_modes_with_no_check(capsys):
+    import pytest
+    from freereport import cli
+    with pytest.raises(SystemExit):
+        cli.main(["resubmit", "r.pdf", "--original", "o.pdf", "--reviews", "x.txt", "--no-check", "--council"])
+    assert "leave out --no-check" in capsys.readouterr().err
+
+
+class LetterBackend(FakeBackend):
+    def ask(self, label, system, task, schema):
+        if label == "resubmit_letter":
+            self.usage.add(label, FakeUsage())
+            self.tasks[label] = task
+            return {"claims": [
+                {"comment": "R1.1", "claim": "We added the 2ab term.", "verdict": "confirmed", "evidence": "C2",
+                 "page": 1, "quote": "(a + b)^2 = a^2 + 2ab + b^2"},
+                {"comment": "R1.2", "claim": "We now cluster standard errors.", "verdict": "not_found",
+                 "evidence": "No change touches the standard errors.", "page": 0, "quote": ""},
+            ], "unanswered": ["R2.1"]}
+        self.system = system
+        return super().ask(label, system, task, schema)
+
+
+def test_letter_claims_are_checked_and_problems_come_first(tmp_path):
+    letter = tmp_path / "my_letter.tex"
+    letter.write_text("\\section*{Reviewer 1} We added the 2ab term. We now cluster standard errors.")
+    backend = LetterBackend()
+    result = resubmit.check_revision(load(ROOT / "sample_paper.pdf"), load(ROOT / "sample_paper_revised.pdf"),
+                                     REPORTS, backend, letter=letter, log=lambda *_: None)
+    assert "We now cluster standard errors." in backend.tasks["resubmit_letter"] and "[C1]" in backend.tasks["resubmit_letter"]
+    assert [c.verdict for c in result.claims_ranked()] == ["not_found", "confirmed"]
+    md = resubmit.to_markdown(result, backend.usage)
+    assert md.index("Your response letter") < md.index("Referee comments, not addressed first")
+    assert md.index("NOT FOUND") < md.index("CONFIRMED") and "NOT ANSWERED in your letter:** R2.1" in md
+    out = tmp_path / "r.pdf"
+    resubmit.to_pdf(result, backend.usage, out)
+    assert "checked against the changes" in "".join(p.get_text() for p in pymupdf.open(out))
+
+
+def test_quick_resubmit_sends_no_paper_and_skips_the_error_check(tmp_path, monkeypatch):
+    from freereport import cli
+    built = {}
+
+    def fake_backend(paper, model, effort):
+        built["paper"] = paper
+        return LetterBackend()
+
+    monkeypatch.setattr(cli, "ClaudeBackend", fake_backend)
+    monkeypatch.setattr(cli, "audit", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no error check in --quick")))
+    cli.main(["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
+              "--reviews", *map(str, REPORTS), "--quick", "--out", str(tmp_path)])
+    assert built["paper"].pdf_path is None and not built["paper"].tex_lines  # only the change list is sent
+    md = (tmp_path / "sample_paper_revised_resubmission.md").read_text()
+    assert "Quick check: only the list of changes" in md

@@ -63,10 +63,13 @@ Options:
 - `--model claude-sonnet-5-5`: cheaper model (about half the price).
 - `--effort medium`: think less, cost less. Default is `high`.
 
-### Extra modes (can be combined)
+### Modes
+
+`--quick` is the baseline: the 3 core agents only, the cheapest run (the same as giving no mode, but explicit). The three extra modes below can be combined with each other, not with `--quick`.
 
 | Flag | What it adds | Extra cost |
 |---|---|---|
+| `--quick` | Baseline only: Adversary, Data Auditor and Synthesis Critic. | none (3 calls) |
 | `--blindspot` | Each checker re-reads its own draft and looks for what it missed: unstated assumptions, theorem conditions never verified, sections it skipped. | +2 calls |
 | `--deepdive` | Exhaustive mode: section by section, re-derive every step, check every table cell. Uses maximum effort. | slower, roughly 2-3x |
 | `--council` | A separate "Council review" section: five roles give opinions on the paper as a whole. Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (unclear jargon or notation), Executive (verdict and ordered revision plan). | +5 calls |
@@ -116,10 +119,26 @@ Give both versions in the same form (both PDF, or both LaTeX). It:
 1. **Compares the two versions on your computer** (free) and lists every change: LaTeX line by line, or PDF text sentence by sentence.
 2. **Marks every referee comment** as addressed, partly addressed or not addressed, judged from what actually changed, not from what the paper claims. For example, if the letter says "we fixed Table 2" but Table 2 is identical, it is marked not addressed.
 3. **Lists changes no referee asked for** (for example a changed standard error, or a new claim), which editors often ask about.
-4. **Runs the normal error check on the revised paper**, because edits often add new mistakes. Skip it with `--no-check`.
+4. **Runs the normal error check on the revised paper**, because edits often add new mistakes. Skip it with `--no-check`, or make it deeper with the same modes as `check` (`--blindspot`, `--council`, `--deepdive`).
 5. **Drafts the response letter**: each comment with a reply saying what changed and where. Missing parts are marked `[TO DO]`.
 
 Add `--previous reports/my_paper_referee_response.json` (from `freereport respond`) to keep the same comment numbers and the earlier plan.
+
+### Final review of your own response letter
+
+Wrote your own letter? Add `--letter` and every claim in it ("we added a robustness table", "Equation 3 is corrected") is checked against the real changes: **confirmed**, **partly done**, **not found** or **contradicted**, problems first. It also lists referee comments your letter does not answer.
+
+```bash
+freereport resubmit revised.zip --original my_paper.zip --reviews r1.pdf r2.pdf --letter my_response.tex
+```
+
+### Quick double-check
+
+`--quick` makes `resubmit` a cheap double-check: it sends only the list of changes (not the whole paper) and skips the error check, so it costs a fraction of a full run (the report shows the exact cost). Good for a last look after small fixes; run without `--quick` for the full review.
+
+```bash
+freereport resubmit revised.zip --original my_paper.zip --reviews r1.pdf r2.pdf --letter my_response.tex --quick
+```
 
 You get, in `reports/`:
 

@@ -106,3 +106,11 @@ def test_pdf_report(tmp_path):
     assert "FreeReport audit: sample_paper.pdf" in text
     assert "Missing 2ab term" in text and "Merged duplicates" in text and "Council review" in text
     assert "page 1 of" in text
+
+
+def test_quick_cannot_be_combined_with_extra_modes(capsys):
+    import pytest
+    from freereport import cli
+    with pytest.raises(SystemExit):
+        cli.main(["check", "x.pdf", "--quick", "--council"])
+    assert "--quick is the baseline run" in capsys.readouterr().err

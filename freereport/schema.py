@@ -156,3 +156,20 @@ class ResubmitOverview(BaseModel):
     summary: str = Field(description="3-6 sentences: is the revision ready to resubmit, and what must still be done first.")
     unrequested: list[UnrequestedChange] = Field(description="Substantive changes in the CHANGES list that no referee comment asked for. Skip pure typo or wording fixes.")
     letter_opening: str = Field(description="Opening paragraph of the response letter to the editor: thanks, and a 2-4 sentence summary of the main changes.")
+
+
+ClaimVerdict = Literal["confirmed", "partly", "not_found", "contradicted"]
+
+
+class LetterClaim(BaseModel):
+    comment: str = Field(description="Referee comment id the claim answers, e.g. 'R1.3', or '' if general.")
+    claim: str = Field(description="What the authors' letter says was done, quoted or closely paraphrased.")
+    verdict: ClaimVerdict = Field(description="confirmed: the change is there; partly: only some of it; not_found: no such change in the CHANGES list or the revised text; contradicted: the revised text says something different.")
+    evidence: str = Field(description="Change ids (e.g. 'C4') and what they show, or what the revised text actually says.")
+    page: int = Field(description="1-based page of the REVISED PDF where the claimed change is (or should be), or 0.")
+    quote: str = Field(description="Exact short passage (5-25 words) of the REVISED manuscript showing it, or ''.")
+
+
+class LetterCheck(BaseModel):
+    claims: list[LetterClaim]
+    unanswered: list[str] = Field(description="Ids of referee comments the letter does not answer at all.")
