@@ -65,18 +65,26 @@ Options:
 
 ### Modes
 
-`--quick` is the baseline: the 3 core agents only, the cheapest run (the same as giving no mode, but explicit). The three extra modes below can be combined with each other, not with `--quick`.
+Every run starts with the **baseline**: the 3 core agents (Adversary, Data Auditor, Synthesis Critic). `--quick` names it explicitly. The extra modes below are added **on top of** the baseline and can be combined with each other (not with `--quick`).
 
-| Flag | What it adds | Extra cost |
-|---|---|---|
-| `--quick` | Baseline only: Adversary, Data Auditor and Synthesis Critic. | none (3 calls) |
-| `--blindspot` | Each checker re-reads its own draft and looks for what it missed: unstated assumptions, theorem conditions never verified, sections it skipped. | +2 calls |
-| `--deepdive` | Exhaustive mode: section by section, re-derive every step, check every table cell. Uses maximum effort. | slower, roughly 2-3x |
-| `--council` | A separate "Council review" section: five roles give opinions on the paper as a whole. Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (unclear jargon or notation), Executive (verdict and ordered revision plan). | +5 calls |
+| Flag | In one line | What it catches that the baseline may miss | Extra cost |
+|---|---|---|---|
+| `--deepdive` | **Read slower.** The same single pass, but exhaustive and at maximum effort: section by section, re-derive every step, check every table cell, appendices included. | Small errors a normal read skims past: a wrong sign in step 4 of a proof, one cell in Table 5 that does not add up. | slower, roughly 2-3x |
+| `--blindspot` | **Look back at what was left out.** After the first pass, each agent re-reads its own list and asks "what did I miss?". | Gaps rather than typos: an assumption never stated, a theorem condition never checked ("Lemma 2 needs independence, but the paper never shows it holds"), a section skipped. | +2 calls |
+| `--council` | **Opinions on the paper as a whole**, from five roles: Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (jargon or notation unclear to a non-specialist), Executive (verdict and ordered revision plan). | Big-picture weaknesses no line-by-line check finds. | +5 calls |
+| `--journal "Name"` | **Council tuned to a target journal**: it also judges fit with the journal's scope, the kind of contribution it publishes, and its tone and style, and the Executive writes a "Fit with ..." paragraph. Works for any field. Turns on `--council`. | Mismatch with the journal: too long, too technical for its readers, a contribution it rarely publishes. | same as `--council` |
 
-The council's points are **opinions** and appear in their own section, separate from the verified error list, so they never mix with real errors.
+In short: **deepdive** goes deeper into what is written, **blindspot** checks what is missing, **council** steps back to judge the whole paper.
 
-Example: `freereport check my_paper.pdf --blindspot --council`
+The council's points are **opinions** and appear in their own section, separate from the verified error list, so they never mix with real errors. If the model does not know a journal well, it says so instead of guessing its policies.
+
+Examples:
+
+```bash
+freereport check my_paper.pdf --blindspot --council
+freereport check my_paper.zip --deepdive --journal "Nature Communications"
+freereport check my_paper.zip --journal "Journal of Development Economics"
+```
 
 ## Responding to referee reports
 

@@ -31,9 +31,11 @@ class FakeBackend:
 
     def __init__(self):
         self.usage = Usage()
+        self.tasks = {}
 
     def ask(self, label, system, task, schema):
         self.usage.add(label, FakeUsage())
+        self.tasks[label] = task
         if label == "adversary":
             return {"findings": [finding("M1", "math", "(a + b)^2 = a^2 + b^2", "Missing 2ab term")]}
         if label == "adversary_blindspot":
@@ -43,7 +45,9 @@ class FakeBackend:
         if label.startswith("council_") and label != "council_executive":
             return {"points": [{"point": f"{label} point", "page": 0}]}
         if label == "council_executive":
-            return {"verdict": "Fix the errors first.", "action_plan": [{"step": "Fix Eq. 3", "why": "critical"}]}
+            fit = "Good fit, shorten the intro." if "journal_fit: 2-4" in task else ""
+            return {"verdict": "Fix the errors first.", "action_plan": [{"step": "Fix Eq. 3", "why": "critical"}],
+                    "journal_fit": fit}
         if label == "data_auditor":
             return {"findings": [
                 finding("D1", "data", "N = 412 students", "Table 1 totals 400, not 412"),
@@ -114,3 +118,21 @@ def test_quick_cannot_be_combined_with_extra_modes(capsys):
     with pytest.raises(SystemExit):
         cli.main(["check", "x.pdf", "--quick", "--council"])
     assert "--quick is the baseline run" in capsys.readouterr().err
+
+
+def test_journal_reaches_every_council_member_and_the_report():
+    backend = FakeBackend()
+    result = audit(load(SAMPLE), backend, Options(council=True, journal="Nature Communications"), log=lambda *_: None)
+    council_tasks = [t for label, t in backend.tasks.items() if label.startswith("council_")]
+    assert len(council_tasks) == 5 and all("Nature Communications" in t for t in council_tasks)
+    md = to_markdown(result, backend.usage)
+    assert "**Fit with Nature Communications:** Good fit, shorten the intro." in md
+
+
+def test_journal_turns_on_the_council(monkeypatch):
+    from freereport import cli
+    seen = {}
+    monkeypatch.setattr(cli, "load", lambda p: (_ for _ in ()).throw(RuntimeError("stop")))
+    monkeypatch.setattr(cli, "Options", lambda **kw: seen.update(kw) or Options(**kw))
+    cli.main(["check", "x.pdf", "--journal", "Ecology Letters"])
+    assert seen["council"] is True and seen["journal"] == "Ecology Letters"

@@ -30,6 +30,7 @@ def _add_modes(p: argparse.ArgumentParser, quick_help: str = "Baseline only: the
     p.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
     p.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
     p.add_argument("--council", action="store_true", help="Add a 5-role opinion review of the whole paper.")
+    p.add_argument("--journal", default="", help='Target journal, e.g. --journal "Nature Communications": the council also judges fit, tone and style for it (turns on --council).')
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,14 +65,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "respond":
         return _respond(args)
-    if args.quick and (args.deepdive or args.blindspot or args.council):
-        parser.error("--quick is the baseline run: leave out --quick to add --deepdive, --blindspot or --council")
-    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council)
+    if args.quick and (args.deepdive or args.blindspot or args.council or args.journal):
+        parser.error("--quick is the baseline run: leave out --quick to add --deepdive, --blindspot, --council or --journal")
+    if args.journal and not args.council:
+        print(f"--journal given: turning on the council to judge fit with {args.journal}")
+    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council or bool(args.journal),
+                   journal=args.journal)
     if args.command == "resubmit":
         if not args.reviews and not args.previous:
             parser.error("resubmit needs --reviews (the referee reports) or --previous")
-        if args.no_check and (args.deepdive or args.blindspot or args.council):
-            parser.error("--deepdive, --blindspot and --council change the error check: leave out --no-check to use them")
+        if args.no_check and (opts.deepdive or opts.blindspot or opts.council):
+            parser.error("--deepdive, --blindspot, --council and --journal change the error check: leave out --no-check to use them")
         return _resubmit(args, opts)
     effort = "max" if args.deepdive else args.effort
 
