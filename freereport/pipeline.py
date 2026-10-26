@@ -8,11 +8,11 @@ Optional modes:
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from . import prompts
 from .backends import Backend
-from .pdf import page_texts, quote_match
+from .paper import Paper
+from .pdf import quote_match
 from .schema import (
     CouncilDecision,
     CouncilView,
@@ -87,9 +87,8 @@ def _council(backend: Backend, kept: list[tuple[Finding, Verdict]], log):
     return views, decision
 
 
-def audit(pdf_path: Path, backend: Backend, opts: Options | None = None, log=print) -> AuditResult:
+def audit(paper: Paper, backend: Backend, opts: Options | None = None, log=print) -> AuditResult:
     opts = opts or Options()
-    pages = page_texts(pdf_path)
 
     log("Agent 1 (Academic Adversary): checking equations and proofs...")
     math = _find(backend, "adversary", prompts.ADVERSARY, opts, log)
@@ -97,7 +96,7 @@ def audit(pdf_path: Path, backend: Backend, opts: Options | None = None, log=pri
     data = _find(backend, "data_auditor", prompts.DATA_AUDITOR, opts, log)
 
     candidates = math + data
-    quote_scores = {f.id: quote_match(f.quote, pages, f.page) for f in candidates}
+    quote_scores = {f.id: quote_match(f.quote, paper.pages, f.page, paper.tex_text) for f in candidates}
 
     if candidates:
         log("Agent 3 (Synthesis Critic): re-checking every candidate...")
@@ -107,7 +106,7 @@ def audit(pdf_path: Path, backend: Backend, opts: Options | None = None, log=pri
         synthesis = Synthesis(verdicts=[], summary="No candidate errors were found by either reviewer.")
 
     result = AuditResult(
-        paper=Path(pdf_path).name,
+        paper=paper.name,
         model=backend.model,
         candidates=candidates,
         synthesis=synthesis,

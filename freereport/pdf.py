@@ -29,10 +29,11 @@ def normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def quote_match(quote: str, pages: list[str], page: int) -> float:
+def quote_match(quote: str, pages: list[str], page: int, extra: str = "") -> float:
     """Return how much of the quote (0 to 1) is found in the paper.
 
-    Looks on the cited page and its neighbours first, then the whole paper.
+    Looks on the cited page and its neighbours first, then the whole paper,
+    then `extra` (the LaTeX source, when given).
     Equations often extract as garbled text, so a low score means
     "could not confirm", not "invented".
     """
@@ -41,6 +42,8 @@ def quote_match(quote: str, pages: list[str], page: int) -> float:
         return 0.0
     nearby = [p for p in (page - 2, page - 1, page) if 0 <= p < len(pages)]
     candidates = [normalise(pages[i]) for i in nearby] + [normalise(" ".join(pages))]
+    if extra:
+        candidates.append(normalise(extra))
     best = 0.0
     for text in candidates:
         if q in text:
