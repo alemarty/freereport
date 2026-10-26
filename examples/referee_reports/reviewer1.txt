@@ -1,0 +1,11 @@
+Reviewer 1
+
+The paper studies tutoring and exam scores. My recommendation is major revision.
+
+1. Equation (3) is wrong: the square of a sum is missing the cross term 2ab. Since the variance of the total effect is built on it, the main inference may be affected.
+
+2. The abstract says N = 412 but Table 1 sums to 400. Please explain the 12 missing students.
+
+3. The authors should cluster standard errors at the school level.
+
+4. Typo: "standardised" in Table 2 should be "standardized" for consistency with the journal style.

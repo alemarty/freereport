@@ -75,6 +75,33 @@ The council's points are **opinions** and appear in their own section, separate 
 
 Example: `freereport check my_paper.pdf --blindspot --council`
 
+## Responding to referee reports
+
+Got reports back from a journal? Give FreeReport your paper and the reports (one file per referee: `.pdf`, `.docx`, `.txt` or `.md`):
+
+```bash
+freereport respond my_paper.pdf --reviews reviewer1.pdf reviewer2.docx
+freereport respond main.tex --reviews reviewer1.pdf reviewer2.pdf   # LaTeX: also suggests exact edits
+```
+
+For every referee comment it:
+
+1. **Checks whether the referee is right** about your paper: right, partly right, wrong, or unclear, with the evidence.
+2. **Ranks it** from fatal to major, minor and trivial, and estimates the effort.
+3. **Drafts a reply** you can paste into your response letter. With a `.tex` file it also proposes the concrete edit (`main.tex:212: old -> new`).
+
+It also flags comments from different referees that make the same point, or conflicting ones.
+
+You get, in `reports/`:
+
+| File | What it is |
+|---|---|
+| `my_paper_referee_response.pdf` | Colour-coded journal response report: overview, revision plan, then every comment from most to least serious. |
+| `my_paper_highlighted.pdf` | Your paper with each comment highlighted where it applies (red = fatal, orange = major, yellow = minor, grey = trivial). Click a highlight to read the comment, the assessment and the suggested reply. Only made when a PDF of the paper is available. |
+| `.md` / `.json` | The same content as text and data. |
+
+Try it with the examples: `freereport respond examples/sample_paper.pdf --reviews examples/referee_reports/*.txt`
+
 ## Try it on the sample paper
 
 `examples/sample_paper.pdf` is a one-page fake paper with 3 planted errors (listed in `examples/make_sample_paper.py`). A good run should find all three.

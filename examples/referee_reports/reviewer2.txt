@@ -1,0 +1,9 @@
+Report on "A Short Study of Tutoring and Exam Scores"
+
+I enjoyed this paper, but have concerns.
+
+(a) The effect size is reported as 0.43 in the abstract, while the text says 0.34. These must be reconciled.
+
+(b) The paper never states that assignment was random, so the estimate may be confounded.
+
+(c) The p-value of 0.000 in Table 2 should be reported as p < 0.001.

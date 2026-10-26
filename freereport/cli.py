@@ -1,10 +1,15 @@
-"""Command line: freereport check paper.pdf [more.pdf ...]"""
+"""Command line.
+
+  freereport check paper.pdf [more.pdf ...]
+  freereport respond paper.pdf --reviews report1.pdf report2.txt
+"""
 
 import argparse
 import sys
 from pathlib import Path
 
 from .backends import ClaudeBackend
+from . import referee
 from .paper import load
 from .pipeline import Options, audit
 from .report import to_json, to_markdown, to_pdf
@@ -29,7 +34,17 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
     check.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
     check.add_argument("--council", action="store_true", help="Add a 5-role opinion review of the whole paper.")
+
+    resp = sub.add_parser("respond", help="Check, rank and answer referee reports for a paper.")
+    resp.add_argument("paper", type=Path, help="The paper: PDF, .tex or source bundle. With LaTeX you also get concrete edits.")
+    resp.add_argument("--reviews", nargs="+", type=Path, required=True, help="Referee reports (.pdf, .docx, .txt or .md), one file per referee.")
+    resp.add_argument("--out", type=Path, default=Path("reports"))
+    resp.add_argument("--model", default="claude-opus-5-5")
+    resp.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+
     args = parser.parse_args(argv)
+    if args.command == "respond":
+        return _respond(args)
     opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council)
     effort = "max" if args.deepdive else args.effort
 
@@ -55,6 +70,29 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {len(result.kept())} issue(s) · report: {stem.with_suffix('.pdf')}"
               + (f" · cost ≈ ${cost:.2f}" if cost is not None else ""))
     return 1 if failures else 0
+
+
+def _respond(args) -> int:
+    args.out.mkdir(parents=True, exist_ok=True)
+    paper = load(args.paper)
+    for note in paper.notes:
+        print(f"  {note}")
+    backend = ClaudeBackend(paper, model=args.model, effort=args.effort)
+    result = referee.respond(paper, args.reviews, backend)
+
+    stem = args.out / f"{_stem(args.paper)}_referee_response"
+    stem.with_suffix(".md").write_text(referee.to_markdown(result, backend.usage), encoding="utf-8")
+    stem.with_suffix(".json").write_text(referee.to_json(result, backend.usage), encoding="utf-8")
+    referee.to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
+    print(f"  Journal response report: {stem.with_suffix('.pdf')}")
+    if paper.pdf_path:
+        marked = args.out / f"{_stem(args.paper)}_highlighted.pdf"
+        placed = referee.highlight_pdf(result, paper.pdf_path, marked)
+        print(f"  Highlighted paper: {marked} ({placed} of {len(result.assessments)} comments placed on the text)")
+    cost = backend.usage.cost_usd(args.model)
+    if cost is not None:
+        print(f"  cost ≈ ${cost:.2f}")
+    return 0
 
 
 if __name__ == "__main__":
