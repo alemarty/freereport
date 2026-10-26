@@ -84,6 +84,7 @@ class RevisionStep(BaseModel):
 class CouncilDecision(BaseModel):
     verdict: str = Field(description="2-4 sentences: is the paper ready to submit, and what matters most.")
     action_plan: list[RevisionStep] = Field(description="Ordered revision steps, most important first.")
+    journal_fit: str = Field(description="Fit with the target journal, if one was given; otherwise ''.")
 
 
 # --- Referee response mode -----------------------------------------------

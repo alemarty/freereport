@@ -82,9 +82,16 @@ paper's actual content and give a page number (0 if it is about the whole paper)
 
 YOUR ROLE: """
 
+COUNCIL_JOURNAL = """
+
+TARGET JOURNAL: the authors plan to submit to {journal}. Judge the paper also against that journal: its scope and audience,
+the kind of contribution it publishes, its usual length, tone and style (how formal, how much theory vs. evidence, how much
+background for non-specialists), and the points its referees typically push on in this field. Use only what you actually know
+about this journal; if you do not know it well, say so in one point rather than inventing its policies."""
+
 COUNCIL_ROLES = {
-    "Contrarian": "The Contrarian (fatal-flaw finder). Find the ways the paper's main claim could fail: weak identification or "
-    "proof strategy, alternative explanations, assumptions doing the heavy lifting, results that would not survive a hostile referee.",
+    "Contrarian": "The Contrarian (fatal-flaw finder). Find the ways the paper's main claim could fail: weak causal identification, "
+    "proof strategy or experimental design, alternative explanations, assumptions doing the heavy lifting, results that would not survive a hostile referee.",
     "First Principles": "The First-Principles Thinker. Ignore how papers in this field usually do it. Ask whether the method, from the "
     "ground up, actually answers the research question, and whether a simpler or more direct approach would.",
     "Expansionist": "The Expansionist (opportunity seeker). Point out where the contribution is undersold: stronger results the "
@@ -94,6 +101,7 @@ COUNCIL_ROLES = {
 }
 
 COUNCIL_EXECUTIVE = """You are the Executive (chair) of a five-person council giving pre-submission feedback on the manuscript.
+{journal_rule}
 Below are the verified error findings and the opinions of the other four members. Weigh them, discard weak or
 contradictory points, and give a verdict plus an ordered, practical revision plan for the author.
 
@@ -198,3 +206,7 @@ THE AUTHORS' RESPONSE LETTER:
 
 CHANGES FROM THE ORIGINAL TO THE REVISED MANUSCRIPT:
 {changes}"""
+
+COUNCIL_FIT_RULE = """Also fill journal_fit: 2-4 sentences on how well the paper fits {journal} (scope, contribution, tone and style)
+and the one or two changes that would most improve its chances there."""
+COUNCIL_NO_JOURNAL_RULE = "Leave journal_fit empty (no target journal was given)."

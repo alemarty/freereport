@@ -33,6 +33,7 @@ class Options:
     deepdive: bool = False
     blindspot: bool = False
     council: bool = False
+    journal: str = ""  # target journal, used by the council
 
 
 @dataclass
@@ -69,15 +70,17 @@ def _find(backend: Backend, label: str, task: str, opts: Options, log) -> list[F
     return found
 
 
-def _council(backend: Backend, kept: list[tuple[Finding, Verdict]], log):
+def _council(backend: Backend, kept: list[tuple[Finding, Verdict]], log, journal: str = ""):
     views = {}
+    journal_note = prompts.COUNCIL_JOURNAL.format(journal=journal) if journal else ""
     for role, brief in prompts.COUNCIL_ROLES.items():
         log(f"Council: {role}...")
         views[role] = CouncilView.model_validate(
-            backend.ask(f"council_{role}", prompts.SYSTEM, prompts.COUNCIL_INTRO + brief, strict_schema(CouncilView))
+            backend.ask(f"council_{role}", prompts.SYSTEM, prompts.COUNCIL_INTRO + brief + journal_note, strict_schema(CouncilView))
         )
     log("Council: Executive...")
     task = prompts.COUNCIL_EXECUTIVE.format(
+        journal_rule=prompts.COUNCIL_FIT_RULE.format(journal=journal) if journal else prompts.COUNCIL_NO_JOURNAL_RULE,
         findings=json.dumps([f.model_dump() for f, _ in kept], indent=1),
         opinions=json.dumps({r: v.model_dump() for r, v in views.items()}, indent=1),
     )
@@ -114,5 +117,5 @@ def audit(paper: Paper, backend: Backend, opts: Options | None = None, log=print
         options=opts,
     )
     if opts.council:
-        result.council, result.decision = _council(backend, result.kept(), log)
+        result.council, result.decision = _council(backend, result.kept(), log, opts.journal)
     return result

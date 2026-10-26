@@ -106,6 +106,7 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
             "",
             result.decision.verdict,
             "",
+            *([f"**Fit with {result.options.journal}:** {result.decision.journal_fit}", ""] if result.decision.journal_fit else []),
             "**Revision plan:**",
             "",
         ]
@@ -190,6 +191,8 @@ def to_html(result: AuditResult, usage: Usage) -> str:
             '<p class="note">Opinions from five reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.</p>',
             "<h3>Executive verdict</h3>",
             f"<p>{escape(result.decision.verdict)}</p>",
+            *([f'<p><span class="label">Fit with {escape(result.options.journal)}:</span> {escape(result.decision.journal_fit)}</p>']
+              if result.decision.journal_fit else []),
             '<p class="label">Revision plan:</p>',
             "<ol>",
             *[f"<li>{escape(s.step)} <i>({escape(s.why)})</i></li>" for s in result.decision.action_plan],
