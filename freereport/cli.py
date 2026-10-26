@@ -2,6 +2,7 @@
 
   freereport check paper.pdf [more.pdf ...]
   freereport respond paper.pdf --reviews report1.pdf report2.txt
+  freereport resubmit revised.pdf --original paper.pdf --reviews report1.pdf report2.txt
 """
 
 import argparse
@@ -9,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .backends import ClaudeBackend
-from . import referee
+from . import referee, resubmit
 from .paper import load
 from .pipeline import Options, audit
 from .report import to_json, to_markdown, to_pdf
@@ -42,9 +43,23 @@ def main(argv: list[str] | None = None) -> int:
     resp.add_argument("--model", default="claude-opus-5-5")
     resp.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
 
+    resub = sub.add_parser("resubmit", help="Before resubmitting: check the revised paper against the original and the referee reports.")
+    resub.add_argument("paper", type=Path, help="The REVISED paper: PDF, .tex or source bundle.")
+    resub.add_argument("--original", type=Path, required=True, help="The version the referees read, in the same form (both PDF, or both LaTeX).")
+    resub.add_argument("--reviews", nargs="+", type=Path, default=[], help="Referee reports (.pdf, .docx, .txt or .md), one file per referee.")
+    resub.add_argument("--previous", type=Path, help="Optional: the _referee_response.json from 'freereport respond', to keep the same comment ids and plan.")
+    resub.add_argument("--no-check", action="store_true", help="Skip the error check of the revised paper.")
+    resub.add_argument("--out", type=Path, default=Path("reports"))
+    resub.add_argument("--model", default="claude-opus-5-5")
+    resub.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+
     args = parser.parse_args(argv)
     if args.command == "respond":
         return _respond(args)
+    if args.command == "resubmit":
+        if not args.reviews and not args.previous:
+            parser.error("resubmit needs --reviews (the referee reports) or --previous")
+        return _resubmit(args)
     opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council)
     effort = "max" if args.deepdive else args.effort
 
@@ -89,6 +104,50 @@ def _respond(args) -> int:
         marked = args.out / f"{_stem(args.paper)}_highlighted.pdf"
         placed = referee.highlight_pdf(result, paper.pdf_path, marked)
         print(f"  Highlighted paper: {marked} ({placed} of {len(result.assessments)} comments placed on the text)")
+    cost = backend.usage.cost_usd(args.model)
+    if cost is not None:
+        print(f"  cost ≈ ${cost:.2f}")
+    return 0
+
+
+def _resubmit(args) -> int:
+    args.out.mkdir(parents=True, exist_ok=True)
+    original, revised = load(args.original), load(args.paper)
+    for note in revised.notes:
+        print(f"  revised: {note}")
+    for note in original.notes:
+        print(f"  original: {note}")
+    backend = ClaudeBackend(revised, model=args.model, effort=args.effort)
+    stem = _stem(args.paper)
+
+    check_summary = ""
+    if not args.no_check:
+        print("Error check of the revised paper (edits often add new mistakes)...")
+        audit_result = audit(revised, backend)
+        report = args.out / stem
+        report.with_suffix(".md").write_text(to_markdown(audit_result, backend.usage), encoding="utf-8")
+        report.with_suffix(".json").write_text(to_json(audit_result, backend.usage), encoding="utf-8")
+        to_pdf(audit_result, backend.usage, report.with_suffix(".pdf"))
+        check_summary = f"{len(audit_result.kept())} issue(s) found, see {report.with_suffix('.pdf').name}."
+        print(f"  Error report: {report.with_suffix('.pdf')}")
+
+    result = resubmit.check_revision(original, revised, args.reviews, backend, previous=args.previous)
+    result.check_summary = check_summary
+    out = args.out / f"{stem}_resubmission"
+    out.with_suffix(".md").write_text(resubmit.to_markdown(result, backend.usage), encoding="utf-8")
+    out.with_suffix(".json").write_text(resubmit.to_json(result, backend.usage), encoding="utf-8")
+    resubmit.to_pdf(result, backend.usage, out.with_suffix(".pdf"))
+    letter = args.out / f"{stem}_response_letter.md"
+    letter.write_text(resubmit.letter(result), encoding="utf-8")
+    letter.with_suffix(".tex").write_text(resubmit.latex_letter(result), encoding="utf-8")
+    print(f"  Resubmission report: {out.with_suffix('.pdf')}")
+    print(f"  Draft response letter: {letter} and {letter.with_suffix('.tex').name} (LaTeX, e.g. for Overleaf)")
+    if revised.pdf_path:
+        marked = args.out / f"{stem}_status_highlighted.pdf"
+        placed = resubmit.highlight_pdf(result, revised.pdf_path, marked)
+        print(f"  Highlighted revised paper: {marked} ({placed} of {len(result.statuses)} comments placed on the text)")
+    counts = result.counts()
+    print("  " + ", ".join(f"{n} {resubmit.STATUS_LABEL[s].lower()}" for s, n in counts.items()))
     cost = backend.usage.cost_usd(args.model)
     if cost is not None:
         print(f"  cost ≈ ${cost:.2f}")

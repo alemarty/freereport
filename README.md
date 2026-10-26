@@ -102,6 +102,37 @@ You get, in `reports/`:
 
 Try it with the examples: `freereport respond examples/sample_paper.pdf --reviews examples/referee_reports/*.txt`
 
+## Before resubmitting
+
+Revised the paper after the reports? Give FreeReport the **revised paper**, the **original** (the version the referees read) and the **referee reports**:
+
+```bash
+freereport resubmit revised.pdf --original my_paper.pdf --reviews reviewer1.pdf reviewer2.docx
+freereport resubmit revised/main.tex --original original/main.tex --reviews reviewer1.pdf   # LaTeX: exact line-by-line comparison
+```
+
+Give both versions in the same form (both PDF, or both LaTeX). It:
+
+1. **Compares the two versions on your computer** (free) and lists every change: LaTeX line by line, or PDF text sentence by sentence.
+2. **Marks every referee comment** as addressed, partly addressed or not addressed, judged from what actually changed, not from what the paper claims. For example, if the letter says "we fixed Table 2" but Table 2 is identical, it is marked not addressed.
+3. **Lists changes no referee asked for** (for example a changed standard error, or a new claim), which editors often ask about.
+4. **Runs the normal error check on the revised paper**, because edits often add new mistakes. Skip it with `--no-check`.
+5. **Drafts the response letter**: each comment with a reply saying what changed and where. Missing parts are marked `[TO DO]`.
+
+Add `--previous reports/my_paper_referee_response.json` (from `freereport respond`) to keep the same comment numbers and the earlier plan.
+
+You get, in `reports/`:
+
+| File | What it is |
+|---|---|
+| `revised_resubmission.pdf` | Status of every comment (red = not addressed, orange = partly, green = addressed), not-addressed first, then the unrequested changes and the draft letter. |
+| `revised_response_letter.tex` | The draft response letter in LaTeX. In Overleaf: New Project → Upload Project, pick the file, and it compiles. `[TO DO]` parts show in red. |
+| `revised_response_letter.md` | The same letter as plain text, to copy into Word. |
+| `revised_status_highlighted.pdf` | The revised paper with each comment's spot highlighted in its status colour. |
+| `revised.pdf` / `.md` / `.json` | The error check of the revised paper. |
+
+Try it with the examples: `freereport resubmit examples/sample_paper_revised.pdf --original examples/sample_paper.pdf --reviews examples/referee_reports/*.txt`
+
 ## Try it on the sample paper
 
 `examples/sample_paper.pdf` is a one-page fake paper with 3 planted errors (listed in `examples/make_sample_paper.py`). A good run should find all three.

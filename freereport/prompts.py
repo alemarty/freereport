@@ -141,3 +141,40 @@ ordered revision plan (most important first, citing comment ids). Point out wher
 
 ASSESSMENTS (JSON):
 {assessments}"""
+
+
+# --- Resubmission check ---------------------------------------------------
+
+RESUBMIT_SYSTEM = """You are part of FreeReport, a tool that helps academic authors check a revised manuscript before resubmitting it to a journal.
+You will receive the REVISED manuscript (as a PDF, as LaTeX source with 'file:line|' prefixes, or both), then a task.
+The original manuscript is not attached; instead each task lists the CHANGES between the original and the revised version
+(found by a mechanical text comparison, ids C1, C2, ...; 'old' is the original text, 'new' the revised text).
+Judge only from the CHANGES list and the revised manuscript. A statement in the paper that something was done is not proof that it was done.
+Point to exact places in the REVISED manuscript (page, 'file:line', and a short verbatim quote)."""
+
+RESUBMIT_ASSESS = """TASK: For each comment from {reviewer} below, decide whether the revised manuscript deals with it.
+- addressed: the requested change was made (or the comment was wrong and the paper was already right, and the response explains why).
+- partly_addressed: something was changed, but not all of what was asked, or the change introduces a new problem.
+- not_addressed: nothing in the CHANGES list or the revised text deals with it.
+Re-check numbers and derivations yourself in the revised text: an edit that claims to fix an error may not fix it.
+{previous_rule}
+
+COMMENTS (JSON):
+{comments}
+
+CHANGES FROM THE ORIGINAL TO THE REVISED MANUSCRIPT:
+{changes}"""
+
+RESUBMIT_PREVIOUS = """For context, the earlier FreeReport assessment of each comment (priority, accuracy and planned reply) is included in the comment JSON as "earlier"."""
+RESUBMIT_NO_PREVIOUS = ""
+
+RESUBMIT_OVERVIEW = """TASK: Below are the status of every referee comment and the list of changes. Write:
+1. summary: is the revision ready to resubmit, and what must be done first (cite comment ids);
+2. unrequested: substantive changes no referee asked for (new results, changed numbers, removed sections), which editors often ask about;
+3. letter_opening: the opening paragraph of the response letter to the editor.
+
+COMMENT STATUS (JSON):
+{statuses}
+
+CHANGES:
+{changes}"""
