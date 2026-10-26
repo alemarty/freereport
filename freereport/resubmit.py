@@ -31,6 +31,7 @@ from .paper import Paper
 from .referee import PRIORITY_ORDER, _REFEREE_CSS, _find, _hex, read_report
 from .schema import (
     CommentStatus,
+    LetterCheck,
     RefereeComment,
     RefereeCommentList,
     ResubmitOverview,
@@ -45,6 +46,12 @@ STATUS_RGB = {
     "partly_addressed": (0.96, 0.55, 0.10),
     "addressed": (0.10, 0.62, 0.25),
 }
+CLAIM_ORDER = {"contradicted": 0, "not_found": 1, "partly": 2, "confirmed": 3}
+CLAIM_LABEL = {"contradicted": "Contradicted", "not_found": "Not found", "partly": "Partly done", "confirmed": "Confirmed"}
+CLAIM_RGB = {"contradicted": STATUS_RGB["not_addressed"], "not_found": STATUS_RGB["not_addressed"],
+             "partly": STATUS_RGB["partly_addressed"], "confirmed": STATUS_RGB["addressed"]}
+LIGHT_NOTE = ("Quick check: only the list of changes was sent, not the full paper, and no error check was run. "
+              "Use it to double-check; run without --quick for the full review.")
 MAX_SIDE_CHARS = 1500     # per old/new text of one change
 MAX_CHANGES_CHARS = 120_000  # whole list sent to the model
 
@@ -135,6 +142,8 @@ class ResubmitResult:
     statuses: dict[str, CommentStatus]
     overview: ResubmitOverview
     reused_previous: bool = False
+    light: bool = False  # quick check: only the change list was sent, not the manuscript
+    letter_check: LetterCheck | None = None
     check_summary: str = ""  # one line about the error check, filled in by the command line
     notes: list[str] = field(default_factory=list)
 
@@ -142,6 +151,12 @@ class ResubmitResult:
         """Not addressed first, then by seriousness."""
         pairs = [(c, self.statuses[c.id]) for c in self.comments if c.id in self.statuses]
         return sorted(pairs, key=lambda cs: (STATUS_ORDER[cs[1].status], PRIORITY_ORDER[cs[1].priority], cs[0].id))
+
+    def claims_ranked(self):
+        """Letter claims, problems first."""
+        if not self.letter_check:
+            return []
+        return sorted(self.letter_check.claims, key=lambda c: (CLAIM_ORDER[c.verdict], c.comment))
 
     def counts(self) -> dict[str, int]:
         return {s: sum(st.status == s for st in self.statuses.values()) for s in STATUS_ORDER}
@@ -157,7 +172,10 @@ def load_previous(path: Path) -> tuple[list[RefereeComment], dict[str, dict]]:
 
 
 def check_revision(original: Paper, revised: Paper, reports: list[Path], backend: Backend,
-                   previous: Path | None = None, log=print) -> ResubmitResult:
+                   previous: Path | None = None, letter: Path | None = None, light: bool = False,
+                   log=print) -> ResubmitResult:
+    """light=True: the backend was built without the manuscript, so judge from the change list only."""
+    system = prompts.RESUBMIT_SYSTEM_LIGHT if light else prompts.RESUBMIT_SYSTEM
     changes, basis = compare(original, revised)
     log(f"Compared the two versions ({basis}): {len(changes)} change(s)")
     listing = changes_text(changes)
@@ -172,7 +190,7 @@ def check_revision(original: Paper, revised: Paper, reports: list[Path], backend
         )
         log("Splitting the referee reports into comments...")
         comments = RefereeCommentList.model_validate(
-            backend.ask("resubmit_split", prompts.RESUBMIT_SYSTEM, prompts.REFEREE_SPLIT.format(reports=texts),
+            backend.ask("resubmit_split", system, prompts.REFEREE_SPLIT.format(reports=texts),
                         strict_schema(RefereeCommentList))
         ).comments
         log(f"  {len(comments)} comment(s)")
@@ -192,19 +210,28 @@ def check_revision(original: Paper, revised: Paper, reports: list[Path], backend
             changes=listing,
         )
         result = StatusList.model_validate(
-            backend.ask(f"resubmit_status_{report_id}", prompts.RESUBMIT_SYSTEM, task, strict_schema(StatusList))
+            backend.ask(f"resubmit_status_{report_id}", system, task, strict_schema(StatusList))
         )
         statuses.update({s.id: s for s in result.statuses})
 
     log("Writing the overview and the response letter opening...")
     joined = [{"comment": c.model_dump(), "status": statuses[c.id].model_dump()} for c in comments if c.id in statuses]
     overview = ResubmitOverview.model_validate(
-        backend.ask("resubmit_overview", prompts.RESUBMIT_SYSTEM,
+        backend.ask("resubmit_overview", system,
                     prompts.RESUBMIT_OVERVIEW.format(statuses=json.dumps(joined, indent=1), changes=listing),
                     strict_schema(ResubmitOverview))
     )
+    letter_check = None
+    if letter:
+        log(f"Checking your response letter ({Path(letter).name}) against the changes...")
+        task = prompts.RESUBMIT_LETTER.format(
+            comments=json.dumps([c.model_dump() for c in comments], indent=1),
+            letter=read_report(Path(letter)),
+            changes=listing,
+        )
+        letter_check = LetterCheck.model_validate(backend.ask("resubmit_letter", system, task, strict_schema(LetterCheck)))
     return ResubmitResult(revised.name, original.name, backend.model, basis, changes, comments, statuses,
-                          overview, reused_previous=bool(previous))
+                          overview, reused_previous=bool(previous), light=light, letter_check=letter_check)
 
 
 # --- Reports ----------------------------------------------------------------
@@ -315,8 +342,17 @@ def to_markdown(result: ResubmitResult, usage: Usage) -> str:
         result.overview.summary,
         "",
     ]
+    if result.light:
+        lines += [f"*{LIGHT_NOTE}*", ""]
     if result.check_summary:
         lines += [f"**Error check of the revised paper:** {result.check_summary}", ""]
+    if result.letter_check:
+        lines += ["## Your response letter, checked against the changes", ""]
+        for cl in result.claims_ranked():
+            lines += [f"- **{CLAIM_LABEL[cl.verdict].upper()}** ({cl.comment or 'general'}): \"{cl.claim}\" {cl.evidence}"]
+        if result.letter_check.unanswered:
+            lines += [f"- **NOT ANSWERED in your letter:** {', '.join(result.letter_check.unanswered)}"]
+        lines.append("")
     lines += ["## Referee comments, not addressed first", ""]
     for c, s in result.ranked():
         lines += [
@@ -352,8 +388,23 @@ def to_html(result: ResubmitResult, usage: Usage) -> str:
         "<h2>Overview</h2>",
         f"<p>{escape(result.overview.summary)}</p>",
     ]
+    if result.light:
+        out.append(f'<p class="note">{escape(LIGHT_NOTE)}</p>')
     if result.check_summary:
         out.append(f'<p><span class="label">Error check of the revised paper:</span> {escape(result.check_summary)}</p>')
+    if result.letter_check:
+        out += ["<h2>Your response letter, checked against the changes</h2>",
+                '<p class="note">Every claim in your letter about what was changed, problems first.</p>']
+        for cl in result.claims_ranked():
+            colour = _hex(CLAIM_RGB[cl.verdict])
+            out += [f'<p style="border-left: 5px solid {colour}; padding-left: 5pt"><b style="color:{colour}">'
+                    f'{CLAIM_LABEL[cl.verdict].upper()}</b> · {escape(cl.comment or "general")}'
+                    + (f" · page {cl.page}" if cl.page else "") + "</p>",
+                    f'<p class="ref">{escape(cl.claim)}</p>',
+                    f"<p>{escape(cl.evidence)}</p>"]
+        if result.letter_check.unanswered:
+            out.append(f'<p><b style="color:{_hex(STATUS_RGB["not_addressed"])}">Not answered in your letter:</b> '
+                       f'{escape(", ".join(result.letter_check.unanswered))}</p>')
     out.append("<h2>Referee comments, not addressed first</h2>")
     for c, s in result.ranked():
         colour = _hex(STATUS_RGB[s.status])
@@ -413,6 +464,8 @@ def to_json(result: ResubmitResult, usage: Usage) -> str:
             "comments": [c.model_dump() for c in result.comments],
             "statuses": [s.model_dump() for s in result.statuses.values()],
             "overview": result.overview.model_dump(),
+            "letter_check": result.letter_check.model_dump() if result.letter_check else None,
+            "light": result.light,
             "usage": usage.calls,
             "cost_usd": usage.cost_usd(result.model),
         },

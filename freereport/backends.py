@@ -99,7 +99,8 @@ class ClaudeBackend:
                 "type": "image",
                 "source": {"type": "base64", "media_type": media_type, "data": base64.standard_b64encode(data).decode()},
             })
-        self._documents[-1]["cache_control"] = {"type": "ephemeral"}
+        if self._documents:  # nothing to cache in a light check that sends no manuscript
+            self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
     def ask(self, label: str, system: str, task: str, schema: dict) -> dict:
         extra_body, extra_headers = {}, {}

@@ -119,10 +119,26 @@ Give both versions in the same form (both PDF, or both LaTeX). It:
 1. **Compares the two versions on your computer** (free) and lists every change: LaTeX line by line, or PDF text sentence by sentence.
 2. **Marks every referee comment** as addressed, partly addressed or not addressed, judged from what actually changed, not from what the paper claims. For example, if the letter says "we fixed Table 2" but Table 2 is identical, it is marked not addressed.
 3. **Lists changes no referee asked for** (for example a changed standard error, or a new claim), which editors often ask about.
-4. **Runs the normal error check on the revised paper**, because edits often add new mistakes. Skip it with `--no-check`, or make it deeper with the same modes as `check` (`--blindspot`, `--council`, `--deepdive`; `--quick` for the baseline).
+4. **Runs the normal error check on the revised paper**, because edits often add new mistakes. Skip it with `--no-check`, or make it deeper with the same modes as `check` (`--blindspot`, `--council`, `--deepdive`).
 5. **Drafts the response letter**: each comment with a reply saying what changed and where. Missing parts are marked `[TO DO]`.
 
 Add `--previous reports/my_paper_referee_response.json` (from `freereport respond`) to keep the same comment numbers and the earlier plan.
+
+### Final review of your own response letter
+
+Wrote your own letter? Add `--letter` and every claim in it ("we added a robustness table", "Equation 3 is corrected") is checked against the real changes: **confirmed**, **partly done**, **not found** or **contradicted**, problems first. It also lists referee comments your letter does not answer.
+
+```bash
+freereport resubmit revised.zip --original my_paper.zip --reviews r1.pdf r2.pdf --letter my_response.tex
+```
+
+### Quick double-check
+
+`--quick` makes `resubmit` a cheap double-check: it sends only the list of changes (not the whole paper) and skips the error check, so it costs a fraction of a full run (the report shows the exact cost). Good for a last look after small fixes; run without `--quick` for the full review.
+
+```bash
+freereport resubmit revised.zip --original my_paper.zip --reviews r1.pdf r2.pdf --letter my_response.tex --quick
+```
 
 You get, in `reports/`:
 

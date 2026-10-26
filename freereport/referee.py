@@ -67,9 +67,9 @@ def read_report(path: Path) -> str:
             xml = zf.read("word/document.xml").decode("utf-8", errors="replace")
         xml = re.sub(r"</w:p>", "\n", xml)
         return re.sub(r"<[^>]+>", "", xml)
-    if suffix in {".txt", ".md", ".text", ""}:
+    if suffix in {".txt", ".md", ".text", ".tex", ""}:
         return path.read_text(encoding="utf-8", errors="replace")
-    raise ValueError(f"{path.name}: referee reports must be .pdf, .docx, .txt or .md")
+    raise ValueError(f"{path.name}: expected a .pdf, .docx, .txt, .md or .tex file")
 
 
 # --- Pipeline ---------------------------------------------------------------
