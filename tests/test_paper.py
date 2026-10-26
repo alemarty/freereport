@@ -103,3 +103,15 @@ def test_pdf_figures_become_images_and_are_not_taken_as_the_paper(tmp_path):
             zf.write(p, p.relative_to(src).as_posix())
     paper = load(bundle)
     assert paper.pdf_path.name == "main.pdf" and "compiled paper" in paper.pages[0]
+
+
+def test_large_png_is_scaled_down(tmp_path):
+    import pymupdf
+    from freereport.paper import MAX_FIGURE_PIXELS
+    big = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 3000, 1500), False)
+    big.clear_with(200)
+    (tmp_path / "main.tex").write_text("\\documentclass{article}\n\\includegraphics{wide.png}\n")
+    (tmp_path / "wide.png").write_bytes(big.tobytes("png"))
+    [(name, media, data)] = load(tmp_path / "main.tex").figures
+    small = pymupdf.Pixmap(data)
+    assert (name, media) == ("wide.png", "image/png") and max(small.width, small.height) == MAX_FIGURE_PIXELS

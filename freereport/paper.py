@@ -24,9 +24,10 @@ _INPUT = re.compile(r"\\(?:input|include|subfile)\{([^}]+)\}")
 _COMMENT = re.compile(r"(?<!\\)%.*")
 _GRAPHIC = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
 _IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
-MAX_FIGURES = 20
+MAX_FIGURES = 60  # the API accepts up to 100 images per request
 MAX_FIGURE_BYTES = 5 * 1024 * 1024
-MAX_FIGURE_PIXELS = 1568  # longest side of a PDF figure turned into an image
+MAX_TOTAL_FIGURE_BYTES = 15 * 1024 * 1024  # keeps the whole request well under the API's 32 MB limit
+MAX_FIGURE_PIXELS = 1568  # longest side sent; larger images are scaled down (the model sees no more detail anyway)
 
 
 @dataclass
@@ -79,10 +80,28 @@ def _pdf_to_png(path: Path) -> bytes:
         return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
 
 
+def _shrink(data: bytes, media_type: str) -> tuple[bytes, str]:
+    """Scale a large PNG/JPG down to MAX_FIGURE_PIXELS on its longest side; other images unchanged."""
+    if media_type not in {"image/png", "image/jpeg"}:
+        return data, media_type
+    try:
+        pix = pymupdf.Pixmap(data)
+    except Exception:  # unreadable here: send it as it is and let the API decide
+        return data, media_type
+    if max(pix.width, pix.height) <= MAX_FIGURE_PIXELS:
+        return data, media_type
+    with pymupdf.open() as doc:  # draw it on a page of the target size, then render that page
+        scale = MAX_FIGURE_PIXELS / max(pix.width, pix.height)
+        page = doc.new_page(width=pix.width * scale, height=pix.height * scale)
+        page.insert_image(page.rect, stream=data)
+        small = page.get_pixmap()
+    return (small.tobytes("jpeg"), "image/jpeg") if media_type == "image/jpeg" else (small.tobytes("png"), "image/png")
+
+
 def _figures(paper: Paper, root: Path) -> None:
     """Attach the figures used by \\includegraphics: PNG/JPG/GIF/WebP as they are,
     PDF figures turned into PNG images."""
-    skipped, converted = [], 0
+    skipped, converted, total = [], 0, 0
     for ref in dict.fromkeys(m.group(1).strip() for _, _, t in paper.tex_lines for m in _GRAPHIC.finditer(t)):
         base = root / ref
         found = next((p for p in [base, *(base.with_name(base.name + ext) for ext in [*_IMAGE_TYPES, ".pdf"])]
@@ -96,19 +115,21 @@ def _figures(paper: Paper, root: Path) -> None:
                 data, media_type = _pdf_to_png(found), "image/png"
                 converted += 1
             else:
-                data, media_type = found.read_bytes(), _IMAGE_TYPES[found.suffix.lower()]
+                data, media_type = _shrink(found.read_bytes(), _IMAGE_TYPES[found.suffix.lower()])
         except Exception:  # a damaged figure should not stop the check
             skipped.append(ref)
             continue
-        if len(data) > MAX_FIGURE_BYTES:
+        if len(data) > MAX_FIGURE_BYTES or total + len(data) > MAX_TOTAL_FIGURE_BYTES:
             skipped.append(ref)
             continue
+        total += len(data)
         paper.figures.append((name, media_type, data))
     if paper.figures:
         paper.notes.append(f"{len(paper.figures)} figure(s) attached"
                            + (f" ({converted} PDF figure(s) turned into images)" if converted else ""))
     if skipped:
-        paper.notes.append(f"figures not sent (EPS, missing, damaged, too large, or over {MAX_FIGURES}): {', '.join(skipped)}")
+        paper.notes.append(f"figures not sent (EPS, missing, damaged, too large, or over the limit of {MAX_FIGURES} figures / "
+                           f"{MAX_TOTAL_FIGURE_BYTES // 2**20} MB): {', '.join(skipped)}")
 
 
 def _load_tex(tex: Path, name: str, pdf: Path | None) -> Paper:
