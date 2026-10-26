@@ -70,3 +70,36 @@ def test_zip_with_unsafe_path_is_rejected(tmp_path):
         zf.writestr("../escape.tex", MAIN)
     with pytest.raises(ValueError, match="unsafe path"):
         load(bundle)
+
+
+def _pdf(path, text, pages=1):
+    import pymupdf
+    doc = pymupdf.open()
+    for _ in range(pages):
+        doc.new_page(width=300, height=200).insert_text((20, 50), text)
+    doc.save(path)
+
+
+def test_pdf_figures_become_images_and_are_not_taken_as_the_paper(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    write_project(src)
+    (src / "main.tex").write_text(MAIN + "\\includegraphics{bigfigure}\n")
+    _pdf(src / "bigfigure.pdf", "a plot", pages=30)  # large PDF figure in the top folder
+    bundle = tmp_path / "paper.zip"
+    with zipfile.ZipFile(bundle, "w") as zf:
+        for p in src.rglob("*"):
+            zf.write(p, p.relative_to(src).as_posix())
+    paper = load(bundle)
+    assert paper.pdf_path is None  # the figure is not mistaken for the compiled paper
+    assert any("using the LaTeX only" in n for n in paper.notes)
+    names = {name: (media, data) for name, media, data in paper.figures}
+    assert names["bigfigure.pdf"][0] == "image/png" and names["bigfigure.pdf"][1].startswith(b"\x89PNG")
+    assert any("1 PDF figure(s) turned into images" in n for n in paper.notes)
+
+    _pdf(src / "main.pdf", "the compiled paper")  # main.tex -> main.pdf is used
+    with zipfile.ZipFile(bundle, "w") as zf:
+        for p in src.rglob("*"):
+            zf.write(p, p.relative_to(src).as_posix())
+    paper = load(bundle)
+    assert paper.pdf_path.name == "main.pdf" and "compiled paper" in paper.pages[0]
