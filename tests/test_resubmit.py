@@ -112,3 +112,15 @@ def test_resubmit_reuses_previous_ids(tmp_path):
     assert "resubmit_split" not in backend.tasks  # no new split: same ids as before
     assert '"earlier"' in backend.tasks["resubmit_status_R1"] and "We fixed it." in backend.tasks["resubmit_status_R1"]
     assert result.reused_previous and [c.id for c in result.comments] == ["R1.1"]
+
+
+def test_latex_letter_escapes_and_marks_todo():
+    backend = FakeBackend()
+    result = resubmit.check_revision(load(ROOT / "sample_paper.pdf"), load(ROOT / "sample_paper_revised.pdf"),
+                                     REPORTS, backend, log=lambda *_: None)
+    result.statuses["R1.2"].response = "Clustered SEs: 50% & p < 0.001, β ≈ 0.4. [TO DO: re-run table_2]"
+    tex = resubmit.latex_letter(result)
+    assert tex.startswith("\\documentclass") and tex.rstrip().endswith("\\end{document}")
+    assert r"50\% \& p \textless{} 0.001, $\beta$ $\approx$ 0.4." in tex
+    assert r"\textcolor{red}{\textbf{[TO DO: re-run table\_2]}}" in tex
+    assert tex.index(r"\subsection*{Reviewer 1}") < tex.index(r"\subsection*{Report 2}")

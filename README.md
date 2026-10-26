@@ -126,7 +126,8 @@ You get, in `reports/`:
 | File | What it is |
 |---|---|
 | `revised_resubmission.pdf` | Status of every comment (red = not addressed, orange = partly, green = addressed), not-addressed first, then the unrequested changes and the draft letter. |
-| `revised_response_letter.md` | The draft response letter, ready to copy into Word. |
+| `revised_response_letter.tex` | The draft response letter in LaTeX. In Overleaf: New Project → Upload Project, pick the file, and it compiles. `[TO DO]` parts show in red. |
+| `revised_response_letter.md` | The same letter as plain text, to copy into Word. |
 | `revised_status_highlighted.pdf` | The revised paper with each comment's spot highlighted in its status colour. |
 | `revised.pdf` / `.md` / `.json` | The error check of the revised paper. |
 

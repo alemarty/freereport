@@ -242,6 +242,68 @@ def letter(result: ResubmitResult) -> str:
     return "\n".join(lines)
 
 
+_TEX_SPECIAL = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_",
+                "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+                "<": r"\textless{}", ">": r"\textgreater{}",
+                # common symbols pdfLaTeX (Overleaf's default) cannot read directly
+                "≈": r"$\approx$", "≤": r"$\leq$", "≥": r"$\geq$", "±": r"$\pm$", "×": r"$\times$",
+                "−": "-", "→": r"$\rightarrow$", "α": r"$\alpha$", "β": r"$\beta$", "γ": r"$\gamma$",
+                "δ": r"$\delta$", "ε": r"$\varepsilon$", "μ": r"$\mu$", "σ": r"$\sigma$", "ρ": r"$\rho$",
+                "χ": r"$\chi$", "²": r"$^2$", "√": r"$\surd$", "∞": r"$\infty$", "≠": r"$\neq$"}
+_TODO = re.compile(r"\[TO DO[^\]]*\]")
+
+
+def _tex(text: str) -> str:
+    """Escape plain text for LaTeX, showing [TO DO ...] markers in red."""
+    def esc(t: str) -> str:
+        return "".join(_TEX_SPECIAL.get(ch, ch) for ch in t)
+    out, last = [], 0
+    for m in _TODO.finditer(text):
+        out += [esc(text[last:m.start()]), r"\textcolor{red}{\textbf{" + esc(m.group()) + "}}"]
+        last = m.end()
+    return "".join(out) + esc(text[last:])
+
+
+def latex_letter(result: ResubmitResult) -> str:
+    """The draft response letter as a LaTeX file that compiles as is (e.g. upload to Overleaf)."""
+    lines = [
+        r"\documentclass[11pt]{article}",
+        r"\usepackage[utf8]{inputenc}",
+        r"\usepackage[T1]{fontenc}",
+        r"\usepackage[margin=2.5cm]{geometry}",
+        r"\usepackage{xcolor}",
+        r"\usepackage[most]{tcolorbox}",
+        r"\newtcolorbox{referee}{colback=gray!8, colframe=gray!45, boxrule=0.4pt, arc=1pt, breakable}",
+        r"\setlength{\parindent}{0pt}",
+        r"\setlength{\parskip}{6pt}",
+        "",
+        r"\begin{document}",
+        "",
+        r"\section*{Response to the referees}",
+        r"\textit{Manuscript: " + _tex(result.paper) + "}",
+        "",
+        _tex(result.overview.letter_opening),
+        "",
+    ]
+    reviewer = None
+    for c in result.comments:
+        s = result.statuses.get(c.id)
+        if s is None:
+            continue
+        if c.reviewer != reviewer:
+            reviewer = c.reviewer
+            lines += [r"\subsection*{" + _tex(reviewer) + "}", ""]
+        lines += [
+            r"\begin{referee}",
+            r"\textbf{Comment " + _tex(c.id) + r".} \textit{" + _tex(c.text.strip()) + "}",
+            r"\end{referee}",
+            r"\textbf{Response.} " + _tex(s.response),
+            "",
+        ]
+    lines.append(r"\end{document}")
+    return "\n".join(lines) + "\n"
+
+
 def to_markdown(result: ResubmitResult, usage: Usage) -> str:
     lines = [
         f"# Resubmission check: {result.paper}",

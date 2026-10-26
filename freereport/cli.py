@@ -139,8 +139,9 @@ def _resubmit(args) -> int:
     resubmit.to_pdf(result, backend.usage, out.with_suffix(".pdf"))
     letter = args.out / f"{stem}_response_letter.md"
     letter.write_text(resubmit.letter(result), encoding="utf-8")
+    letter.with_suffix(".tex").write_text(resubmit.latex_letter(result), encoding="utf-8")
     print(f"  Resubmission report: {out.with_suffix('.pdf')}")
-    print(f"  Draft response letter: {letter}")
+    print(f"  Draft response letter: {letter} and {letter.with_suffix('.tex').name} (LaTeX, e.g. for Overleaf)")
     if revised.pdf_path:
         marked = args.out / f"{stem}_status_highlighted.pdf"
         placed = resubmit.highlight_pdf(result, revised.pdf_path, marked)
