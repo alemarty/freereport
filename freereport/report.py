@@ -36,11 +36,12 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
         lines += ["No issues survived the final check.", ""]
     for n, (f, v) in enumerate(kept, 1):
         score = result.quote_scores.get(f.id, 0.0)
-        flag = "" if score >= QUOTE_THRESHOLD else " ⚠️ quote not found in extracted text, check location by hand"
+        flag = "" if score >= QUOTE_THRESHOLD else " ⚠️ quote not found in the paper's text, check location by hand"
+        where = ", ".join(x for x in (f"page {f.page}" if f.page else "", f"`{f.source_line}`" if f.source_line else "", f.location) if x)
         lines += [
             f"### {n}. {f.problem}",
             "",
-            f"**{v.severity.title()}** · confidence {v.confidence} · {f.category} · page {f.page}, {f.location}{flag}",
+            f"**{v.severity.title()}** · confidence {v.confidence} · {f.category} · {where}{flag}",
             "",
             f"> {f.quote}",
             "",

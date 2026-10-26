@@ -42,6 +42,16 @@ freereport check my_paper.pdf
 freereport check papers/*.pdf --out reports/
 ```
 
+### What you can give it
+
+| Input | Example | What the AI sees |
+|---|---|---|
+| PDF | `freereport check paper.pdf` | The rendered paper, including figures. |
+| LaTeX file | `freereport check main.tex` | The exact source, so equations and table numbers are read without PDF errors. Issues cite the file and line, e.g. `main.tex:212`. Files pulled in with `\input{...}` are included. If `main.pdf` sits next to it, the PDF is sent too. |
+| arXiv-style bundle | `freereport check submission.zip` (or `.tar.gz`) | The same zip you would upload to arXiv: it finds the main `.tex` (the one with `\documentclass`), follows its `\input` files, and sends PNG/JPG figures. A compiled PDF inside the bundle is used too. |
+
+LaTeX comments (`% ...`) are removed before sending, so private notes in your source stay private.
+
 For each paper you get two files in `reports/`:
 
 - `my_paper.md`: the readable report.

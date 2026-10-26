@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from freereport.backends import Usage
+from freereport.paper import load
 from freereport.pdf import page_texts, quote_match
 from freereport.pipeline import Options, audit
 from freereport.report import to_json, to_markdown
@@ -18,7 +19,7 @@ class FakeUsage:
 
 def finding(id, category, quote, problem):
     return {
-        "id": id, "category": category, "page": 1, "location": "x", "quote": quote,
+        "id": id, "category": category, "page": 1, "source_line": "", "location": "x", "quote": quote,
         "problem": problem, "check": "c", "suggested_fix": "f", "severity": "major", "confidence": "high",
     }
 
@@ -58,7 +59,7 @@ class FakeBackend:
 
 def test_audit_end_to_end():
     backend = FakeBackend()
-    result = audit(SAMPLE, backend, log=lambda *_: None)
+    result = audit(load(SAMPLE), backend, log=lambda *_: None)
     assert [f.id for f, _ in result.kept()] == ["M1", "D1"]
     assert result.quote_scores["D1"] == 1.0
     assert result.quote_scores["D2"] < 0.8
@@ -82,7 +83,7 @@ def test_strict_schema_requires_every_field():
 
 def test_optional_modes():
     backend = FakeBackend()
-    result = audit(SAMPLE, backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
+    result = audit(load(SAMPLE), backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
     labels = [c["agent"] for c in backend.usage.calls]
     assert labels.count("adversary_blindspot") == 1
     assert sum(l.startswith("council_") for l in labels) == 5

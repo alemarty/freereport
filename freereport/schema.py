@@ -14,9 +14,10 @@ class Finding(BaseModel):
 
     id: str = Field(description="Short id, e.g. 'M1' for math or 'D3' for data.")
     category: Category
-    page: int = Field(description="1-based page number of the PDF where the problem is.")
+    page: int = Field(description="1-based page number of the PDF where the problem is, or 0 if no PDF was given.")
+    source_line: str = Field(description="'file:line' in the LaTeX source, e.g. 'main.tex:212', or '' if no LaTeX source was given.")
     location: str = Field(description="Where in the paper, e.g. 'Equation (7)', 'Table 2, row 3', 'Proof of Lemma 1, line 4'.")
-    quote: str = Field(description="Exact text copied from the paper at that spot (at most ~40 words).")
+    quote: str = Field(description="Exact text copied from the paper (PDF text or LaTeX source) at that spot, at most ~40 words.")
     problem: str = Field(description="One or two sentences: what is wrong.")
     check: str = Field(description="The step-by-step working that shows it is wrong, so a human can verify it.")
     suggested_fix: str

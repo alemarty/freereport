@@ -8,10 +8,11 @@ for vLLM / Ollama on a university cluster, behind the same interface.
 import base64
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Protocol
 
 import anthropic
+
+from .paper import Paper
 
 # US dollars per million tokens, Claude Opus 5.5 list prices.
 PRICES = {
@@ -66,18 +67,39 @@ class Backend(Protocol):
 
 
 class ClaudeBackend:
-    """Sends the whole PDF to Claude as a document block.
+    """Sends the whole paper to Claude as document blocks: the PDF, the
+    LaTeX source, or both.
 
-    The system prompt and the PDF form a fixed prefix, cached after the
-    first call, so agents 2 and 3 pay about a tenth of the price for it.
+    The system prompt and the paper form a fixed prefix, cached after the
+    first call, so later agents pay about a tenth of the price for it.
     """
 
-    def __init__(self, pdf_path: Path, model: str = "claude-opus-5-5", effort: str = "high"):
+    def __init__(self, paper: Paper, model: str = "claude-opus-5-5", effort: str = "high"):
         self.client = anthropic.Anthropic()
         self.model = model
         self.effort = effort
         self.usage = Usage()
-        self._pdf_b64 = base64.standard_b64encode(Path(pdf_path).read_bytes()).decode()
+        self._documents = []
+        if paper.pdf_path:
+            pdf_b64 = base64.standard_b64encode(paper.pdf_path.read_bytes()).decode()
+            self._documents.append({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+                "title": "Manuscript (PDF)",
+            })
+        if paper.tex_lines:
+            self._documents.append({
+                "type": "document",
+                "source": {"type": "text", "media_type": "text/plain", "data": paper.tex_numbered},
+                "title": "Manuscript (LaTeX source, 'file:line|' prefixes)",
+            })
+        for name, media_type, data in paper.figures:
+            self._documents.append({"type": "text", "text": f"Figure file: {name}"})
+            self._documents.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": base64.standard_b64encode(data).decode()},
+            })
+        self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
     def ask(self, label: str, system: str, task: str, schema: dict) -> dict:
         extra_body, extra_headers = {}, {}
@@ -93,15 +115,7 @@ class ClaudeBackend:
             output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": schema}},
             messages=[{
                 "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {"type": "base64", "media_type": "application/pdf", "data": self._pdf_b64},
-                        "title": "Manuscript",
-                        "cache_control": {"type": "ephemeral"},
-                    },
-                    {"type": "text", "text": task},
-                ],
+                "content": [*self._documents, {"type": "text", "text": task}],
             }],
             extra_body=extra_body or None,
             extra_headers=extra_headers or None,
