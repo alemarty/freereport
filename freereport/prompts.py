@@ -102,3 +102,42 @@ VERIFIED FINDINGS (JSON):
 
 COUNCIL OPINIONS (JSON):
 {opinions}"""
+
+
+# --- Referee response mode -----------------------------------------------
+
+REFEREE_SYSTEM = """You are part of FreeReport, a tool that helps academic authors respond to referee reports.
+You will receive the full manuscript (as a PDF, as LaTeX source with 'file:line|' prefixes, or both), then a task.
+Be fair to both sides: referees are often right, sometimes partly right, and occasionally wrong about what the paper says.
+Judge every referee claim against what the manuscript actually contains, and point to the exact place (page, 'file:line', and a short verbatim quote)."""
+
+REFEREE_SPLIT = """TASK: Split the referee reports below into individual comments.
+- Number comments per report: R1.1, R1.2, ... for the first report, R2.1, ... for the second, and so on.
+- Keep each comment's text verbatim. Split a paragraph only when it clearly contains separate requests.
+- Skip greetings, summaries of the paper and the referee's recommendation, unless they contain a request.
+
+{reports}"""
+
+REFEREE_ASSESS = """TASK: Assess each comment from {reviewer} below against the manuscript.
+For each comment:
+1. accuracy: is the referee right about the manuscript? Check it yourself (re-derive, re-compute, look up the section) rather than trusting either side.
+2. priority: fatal / major / minor / trivial, judged by how much it matters for the paper's validity and acceptance, not by the referee's tone.
+3. locate it in the manuscript (page, 'file:line' if LaTeX is given, short verbatim quote), or leave those empty if it is general.
+4. related: ids of comments from the other reports (listed for reference) that raise the same or a conflicting point.
+5. suggested_response: a reply the authors can paste into their response letter. Thank the referee briefly, then be specific. If the referee is wrong, explain politely with evidence from the paper.
+6. suggested_edit: {edit_rule}
+
+COMMENTS TO ASSESS (JSON):
+{comments}
+
+ALL COMMENTS FROM THE OTHER REPORTS, FOR CROSS-CHECKING ONLY (JSON):
+{others}"""
+
+REFEREE_EDIT_TEX = "the concrete LaTeX change, e.g. 'main.tex:212: <old text> -> <new text>', or the new text to insert and where."
+REFEREE_EDIT_NONE = "leave empty (no LaTeX source was given)."
+
+REFEREE_OVERVIEW = """TASK: Below are the referee comments and their assessments. Write a short overview for the authors and an
+ordered revision plan (most important first, citing comment ids). Point out where referees agree or conflict.
+
+ASSESSMENTS (JSON):
+{assessments}"""

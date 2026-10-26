@@ -84,3 +84,42 @@ class RevisionStep(BaseModel):
 class CouncilDecision(BaseModel):
     verdict: str = Field(description="2-4 sentences: is the paper ready to submit, and what matters most.")
     action_plan: list[RevisionStep] = Field(description="Ordered revision steps, most important first.")
+
+
+# --- Referee response mode -----------------------------------------------
+
+Accuracy = Literal["correct", "partly_correct", "incorrect", "unclear"]
+Priority = Literal["fatal", "major", "minor", "trivial"]
+
+
+class RefereeComment(BaseModel):
+    id: str = Field(description="'R<report number>.<comment number>', e.g. 'R1.3'.")
+    reviewer: str = Field(description="How the report names its author, e.g. 'Reviewer 2', or 'Report 1' if unnamed.")
+    text: str = Field(description="The comment, copied verbatim from the report.")
+
+
+class RefereeCommentList(BaseModel):
+    comments: list[RefereeComment]
+
+
+class CommentAssessment(BaseModel):
+    id: str = Field(description="The comment id, e.g. 'R1.3'.")
+    accuracy: Accuracy = Field(description="Is the referee right about the manuscript?")
+    evidence: str = Field(description="What the manuscript actually says or does, and why that makes the comment correct, partly correct or incorrect.")
+    priority: Priority = Field(description="fatal: undermines the main result; major: needs new analysis or substantial rewriting; minor: local fix; trivial: typo or wording.")
+    effort: Literal["small", "medium", "large"]
+    page: int = Field(description="1-based PDF page the comment is about, or 0 if general / no PDF.")
+    source_line: str = Field(description="'file:line' in the LaTeX source the comment is about, or ''.")
+    quote: str = Field(description="Exact short passage (5-25 words) of the manuscript the comment is about, copied verbatim, or '' if the comment is general.")
+    related: list[str] = Field(description="Ids of comments from OTHER reports that raise the same or a conflicting point.")
+    suggested_response: str = Field(description="A polite, specific reply to the referee, ready to paste into the response letter.")
+    suggested_edit: str = Field(description="When LaTeX source is given: the concrete change, as 'file:line: <old text> -> <new text>' or a new paragraph to insert; otherwise ''.")
+
+
+class AssessmentList(BaseModel):
+    assessments: list[CommentAssessment]
+
+
+class RefereeOverview(BaseModel):
+    summary: str = Field(description="3-6 sentences: what the referees agree on, where they conflict, and what matters most for acceptance.")
+    plan: list[RevisionStep] = Field(description="Ordered revision plan, most important first, citing comment ids.")
