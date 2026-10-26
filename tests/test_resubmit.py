@@ -124,3 +124,38 @@ def test_latex_letter_escapes_and_marks_todo():
     assert r"50\% \& p \textless{} 0.001, $\beta$ $\approx$ 0.4." in tex
     assert r"\textcolor{red}{\textbf{[TO DO: re-run table\_2]}}" in tex
     assert tex.index(r"\subsection*{Reviewer 1}") < tex.index(r"\subsection*{Report 2}")
+
+
+def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
+    from freereport import cli
+    seen = {}
+
+    class Dummy:
+        model, effort = "claude-opus-5-5", "high"
+        usage = Usage()
+
+        def __init__(self, paper, model, effort):
+            pass
+
+    def fake_audit(paper, backend, opts):
+        seen["opts"], seen["effort"] = opts, backend.effort
+        raise SystemExit(0)  # stop here: only the options matter
+
+    monkeypatch.setattr(cli, "ClaudeBackend", Dummy)
+    monkeypatch.setattr(cli, "audit", fake_audit)
+    args = ["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
+            "--reviews", str(REPORTS[0]), "--out", str(tmp_path)]
+    try:
+        cli.main(args + ["--deepdive", "--council"])
+    except SystemExit:
+        pass
+    assert seen["opts"].deepdive and seen["opts"].council and not seen["opts"].blindspot
+    assert seen["effort"] == "max"
+
+
+def test_resubmit_rejects_modes_with_no_check(capsys):
+    import pytest
+    from freereport import cli
+    with pytest.raises(SystemExit):
+        cli.main(["resubmit", "r.pdf", "--original", "o.pdf", "--reviews", "x.txt", "--no-check", "--council"])
+    assert "leave out --no-check" in capsys.readouterr().err

@@ -24,6 +24,14 @@ def _stem(path: Path) -> str:
     return path.stem
 
 
+def _add_modes(p: argparse.ArgumentParser) -> None:
+    """Options for the error check, shared by 'check' and 'resubmit'."""
+    p.add_argument("--quick", action="store_true", help="Baseline only: the 3 core agents, no extra modes (the cheapest run; same as giving no mode).")
+    p.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
+    p.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
+    p.add_argument("--council", action="store_true", help="Add a 5-role opinion review of the whole paper.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="freereport", description="Check an academic paper for math and data errors.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -32,10 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--out", type=Path, default=Path("reports"), help="Folder for the reports (default: reports/).")
     check.add_argument("--model", default="claude-opus-5-5")
     check.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
-    check.add_argument("--quick", action="store_true", help="Baseline only: the 3 core agents, no extra modes (the cheapest run; same as giving no mode).")
-    check.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
-    check.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
-    check.add_argument("--council", action="store_true", help="Add a 5-role opinion review of the whole paper.")
+    _add_modes(check)
 
     resp = sub.add_parser("respond", help="Check, rank and answer referee reports for a paper.")
     resp.add_argument("paper", type=Path, help="The paper: PDF, .tex or source bundle. With LaTeX you also get concrete edits.")
@@ -50,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     resub.add_argument("--reviews", nargs="+", type=Path, default=[], help="Referee reports (.pdf, .docx, .txt or .md), one file per referee.")
     resub.add_argument("--previous", type=Path, help="Optional: the _referee_response.json from 'freereport respond', to keep the same comment ids and plan.")
     resub.add_argument("--no-check", action="store_true", help="Skip the error check of the revised paper.")
+    _add_modes(resub)
     resub.add_argument("--out", type=Path, default=Path("reports"))
     resub.add_argument("--model", default="claude-opus-5-5")
     resub.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
@@ -57,13 +63,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "respond":
         return _respond(args)
-    if args.command == "resubmit":
-        if not args.reviews and not args.previous:
-            parser.error("resubmit needs --reviews (the referee reports) or --previous")
-        return _resubmit(args)
     if args.quick and (args.deepdive or args.blindspot or args.council):
         parser.error("--quick is the baseline run: leave out --quick to add --deepdive, --blindspot or --council")
     opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council)
+    if args.command == "resubmit":
+        if not args.reviews and not args.previous:
+            parser.error("resubmit needs --reviews (the referee reports) or --previous")
+        if args.no_check and (args.deepdive or args.blindspot or args.council):
+            parser.error("--deepdive, --blindspot and --council change the error check: leave out --no-check to use them")
+        return _resubmit(args, opts)
     effort = "max" if args.deepdive else args.effort
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -113,7 +121,7 @@ def _respond(args) -> int:
     return 0
 
 
-def _resubmit(args) -> int:
+def _resubmit(args, opts: Options) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     original, revised = load(args.original), load(args.paper)
     for note in revised.notes:
@@ -126,7 +134,10 @@ def _resubmit(args) -> int:
     check_summary = ""
     if not args.no_check:
         print("Error check of the revised paper (edits often add new mistakes)...")
-        audit_result = audit(revised, backend)
+        if opts.deepdive:  # maximum effort for the error check only, not the comment-by-comment check
+            backend.effort = "max"
+        audit_result = audit(revised, backend, opts)
+        backend.effort = args.effort
         report = args.out / stem
         report.with_suffix(".md").write_text(to_markdown(audit_result, backend.usage), encoding="utf-8")
         report.with_suffix(".json").write_text(to_json(audit_result, backend.usage), encoding="utf-8")
