@@ -35,6 +35,7 @@ class Verdict(BaseModel):
     id: str
     keep: bool
     reason: str = Field(description="Why the finding was kept or rejected.")
+    duplicate_of: str = Field(description="If this candidate reports the same problem as another candidate, that candidate's id (and keep must be false); otherwise ''.")
     severity: Severity
     confidence: Confidence
 

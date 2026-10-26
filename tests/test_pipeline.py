@@ -2,11 +2,13 @@
 
 from pathlib import Path
 
+import pymupdf
+
 from freereport.backends import Usage
 from freereport.paper import load
 from freereport.pdf import page_texts, quote_match
 from freereport.pipeline import Options, audit
-from freereport.report import to_json, to_markdown
+from freereport.report import to_json, to_markdown, to_pdf
 from freereport.schema import FindingList, Synthesis, strict_schema
 
 SAMPLE = Path(__file__).parents[1] / "examples" / "sample_paper.pdf"
@@ -46,12 +48,14 @@ class FakeBackend:
             return {"findings": [
                 finding("D1", "data", "N = 412 students", "Table 1 totals 400, not 412"),
                 finding("D2", "data", "this sentence is invented", "Hallucinated"),
+                finding("D3", "data", "(a + b)^2 = a^2 + b^2", "Same as M1"),
             ]}
         return {
             "verdicts": [
-                {"id": "M1", "keep": True, "reason": "ok", "severity": "critical", "confidence": "high"},
-                {"id": "D1", "keep": True, "reason": "ok", "severity": "major", "confidence": "high"},
-                {"id": "D2", "keep": False, "reason": "not in paper", "severity": "minor", "confidence": "low"},
+                {"id": "M1", "keep": True, "reason": "ok", "severity": "critical", "confidence": "high", "duplicate_of": ""},
+                {"id": "D1", "keep": True, "reason": "ok", "severity": "major", "confidence": "high", "duplicate_of": ""},
+                {"id": "D2", "keep": False, "reason": "not in paper", "severity": "minor", "confidence": "low", "duplicate_of": ""},
+                {"id": "D3", "keep": False, "reason": "dup", "severity": "major", "confidence": "high", "duplicate_of": "M1"},
             ],
             "summary": "Two real problems.",
         }
@@ -65,6 +69,7 @@ def test_audit_end_to_end():
     assert result.quote_scores["D2"] < 0.8
     md = to_markdown(result, backend.usage)
     assert "Missing 2ab term" in md and "Rejected candidates" in md
+    assert "**D3** → same as **issue 1**" in md and "D3** (" not in md  # merged, not listed as rejected
     assert '"cost_usd"' in to_json(result, backend.usage)
 
 
@@ -90,3 +95,14 @@ def test_optional_modes():
     assert "M2" in [f.id for f in result.candidates]
     md = to_markdown(result, backend.usage)
     assert "Council review" in md and "Fix Eq. 3" in md and "council_Outsider point" in md
+
+
+def test_pdf_report(tmp_path):
+    backend = FakeBackend()
+    result = audit(load(SAMPLE), backend, Options(council=True, blindspot=True), log=lambda *_: None)
+    out = tmp_path / "report.pdf"
+    to_pdf(result, backend.usage, out)
+    text = "".join(p.get_text() for p in pymupdf.open(out))
+    assert "FreeReport audit: sample_paper.pdf" in text
+    assert "Missing 2ab term" in text and "Merged duplicates" in text and "Council review" in text
+    assert "page 1 of" in text
