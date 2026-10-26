@@ -63,10 +63,13 @@ Options:
 - `--model claude-sonnet-5-5`: cheaper model (about half the price).
 - `--effort medium`: think less, cost less. Default is `high`.
 
-### Extra modes (can be combined)
+### Modes
+
+`--quick` is the baseline: the 3 core agents only, the cheapest run (the same as giving no mode, but explicit). The three extra modes below can be combined with each other, not with `--quick`.
 
 | Flag | What it adds | Extra cost |
 |---|---|---|
+| `--quick` | Baseline only: Adversary, Data Auditor and Synthesis Critic. | none (3 calls) |
 | `--blindspot` | Each checker re-reads its own draft and looks for what it missed: unstated assumptions, theorem conditions never verified, sections it skipped. | +2 calls |
 | `--deepdive` | Exhaustive mode: section by section, re-derive every step, check every table cell. Uses maximum effort. | slower, roughly 2-3x |
 | `--council` | A separate "Council review" section: five roles give opinions on the paper as a whole. Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (unclear jargon or notation), Executive (verdict and ordered revision plan). | +5 calls |

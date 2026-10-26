@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--out", type=Path, default=Path("reports"), help="Folder for the reports (default: reports/).")
     check.add_argument("--model", default="claude-opus-5-5")
     check.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+    check.add_argument("--quick", action="store_true", help="Baseline only: the 3 core agents, no extra modes (the cheapest run; same as giving no mode).")
     check.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
     check.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
     check.add_argument("--council", action="store_true", help="Add a 5-role opinion review of the whole paper.")
@@ -60,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.reviews and not args.previous:
             parser.error("resubmit needs --reviews (the referee reports) or --previous")
         return _resubmit(args)
+    if args.quick and (args.deepdive or args.blindspot or args.council):
+        parser.error("--quick is the baseline run: leave out --quick to add --deepdive, --blindspot or --council")
     opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council)
     effort = "max" if args.deepdive else args.effort
 
