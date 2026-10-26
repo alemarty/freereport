@@ -4,6 +4,11 @@ Planted errors (the answer key for testing):
   1. Equation (3): (a+b)^2 expanded as a^2 + b^2 (missing 2ab).
   2. Text says N = 412 participants; Table 1 groups add to 400.
   3. Text says the treatment effect is 0.34; Table 2 says 0.43.
+
+Also builds examples/sample_paper_revised.pdf, a revision after the referee
+reports in examples/referee_reports/: errors 1-3 fixed, standard errors still
+not clustered (Reviewer 1, point 3), p = 0.000 left as is, and two changes no
+referee asked for (a new robustness sentence, and the standard error 0.08 -> 0.09).
 """
 
 from pathlib import Path
@@ -35,9 +40,25 @@ Table 2. Effect of tutoring (standardised)
 The estimated effect of 0.34 is large and significant.
 """
 
-out = Path(__file__).with_name("sample_paper.pdf")
-doc = pymupdf.open()
-page = doc.new_page()
-page.insert_text((60, 70), TEXT, fontsize=10, fontname="cour")
-doc.save(out)
-print(f"wrote {out}")
+REVISED = (
+    TEXT.replace("N = 412", "N = 400")
+    .replace("by 0.34 standard", "by 0.43 standard")
+    .replace("= a^2 + b^2      ", "= a^2 + 2ab + b^2")
+    .replace("0.08  ", "0.09  ")
+    .replace("standardised", "standardized")
+    .replace("effect of 0.34 is large and significant.",
+             "effect of 0.43 is large and significant.\nResults are robust to excluding the first cohort.")
+)
+
+
+def write(text: str, name: str) -> None:
+    out = Path(__file__).with_name(name)
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((60, 70), text, fontsize=10, fontname="cour")
+    doc.save(out)
+    print(f"wrote {out}")
+
+
+write(TEXT, "sample_paper.pdf")
+write(REVISED, "sample_paper_revised.pdf")

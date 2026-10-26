@@ -123,3 +123,36 @@ class AssessmentList(BaseModel):
 class RefereeOverview(BaseModel):
     summary: str = Field(description="3-6 sentences: what the referees agree on, where they conflict, and what matters most for acceptance.")
     plan: list[RevisionStep] = Field(description="Ordered revision plan, most important first, citing comment ids.")
+
+
+# --- Resubmission check ---------------------------------------------------
+
+Status = Literal["addressed", "partly_addressed", "not_addressed"]
+
+
+class CommentStatus(BaseModel):
+    id: str = Field(description="The referee comment id, e.g. 'R1.3'.")
+    status: Status = Field(description="Did the revision deal with the comment? A change counts only if it appears in the CHANGES list or is visible in the revised manuscript.")
+    priority: Priority = Field(description="fatal / major / minor / trivial, as for the original comment.")
+    evidence: str = Field(description="What changed (citing change ids such as 'C4') or what is still the same, and why that makes the comment addressed or not.")
+    page: int = Field(description="1-based page of the REVISED PDF where the change (or the unchanged problem) is, or 0.")
+    source_line: str = Field(description="'file:line' in the REVISED LaTeX source, or ''.")
+    quote: str = Field(description="Exact short passage (5-25 words) of the REVISED manuscript showing the change or the problem, or ''.")
+    remaining: str = Field(description="What still needs doing before resubmission; '' if fully addressed.")
+    response: str = Field(description="Paragraph for the response letter: thank the referee briefly, say what was changed and where (section, page, equation). If not addressed, write the reply the authors would need and mark the missing part with [TO DO].")
+
+
+class StatusList(BaseModel):
+    statuses: list[CommentStatus]
+
+
+class UnrequestedChange(BaseModel):
+    change: str = Field(description="Change id(s) from the CHANGES list, e.g. 'C7' or 'C7, C8'.")
+    what: str = Field(description="One sentence: what was changed.")
+    note: str = Field(description="Why the editor or referees may ask about it, or 'harmless' for wording and typo fixes.")
+
+
+class ResubmitOverview(BaseModel):
+    summary: str = Field(description="3-6 sentences: is the revision ready to resubmit, and what must still be done first.")
+    unrequested: list[UnrequestedChange] = Field(description="Substantive changes in the CHANGES list that no referee comment asked for. Skip pure typo or wording fixes.")
+    letter_opening: str = Field(description="Opening paragraph of the response letter to the editor: thanks, and a 2-4 sentence summary of the main changes.")
