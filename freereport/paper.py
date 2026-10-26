@@ -16,6 +16,8 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pymupdf
+
 from .pdf import page_texts
 
 _INPUT = re.compile(r"\\(?:input|include|subfile)\{([^}]+)\}")
@@ -24,6 +26,7 @@ _GRAPHIC = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
 _IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 MAX_FIGURES = 20
 MAX_FIGURE_BYTES = 5 * 1024 * 1024
+MAX_FIGURE_PIXELS = 1568  # longest side of a PDF figure turned into an image
 
 
 @dataclass
@@ -68,21 +71,44 @@ def _flatten(path: Path, root: Path, seen: set[Path]) -> list[tuple[str, int, st
     return lines
 
 
+def _pdf_to_png(path: Path) -> bytes:
+    """First page of a PDF figure as a PNG, longest side at most MAX_FIGURE_PIXELS."""
+    with pymupdf.open(path) as doc:
+        page = doc[0]
+        zoom = min(4.0, MAX_FIGURE_PIXELS / max(page.rect.width, page.rect.height))
+        return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
+
+
 def _figures(paper: Paper, root: Path) -> None:
-    """Attach the raster figures used by \\includegraphics (PNG/JPG/GIF/WebP)."""
-    skipped = []
+    """Attach the figures used by \\includegraphics: PNG/JPG/GIF/WebP as they are,
+    PDF figures turned into PNG images."""
+    skipped, converted = [], 0
     for ref in dict.fromkeys(m.group(1).strip() for _, _, t in paper.tex_lines for m in _GRAPHIC.finditer(t)):
         base = root / ref
-        found = next((p for p in [base, *(base.with_name(base.name + ext) for ext in _IMAGE_TYPES)]
-                      if p.suffix.lower() in _IMAGE_TYPES and p.is_file()), None)
-        if found is None or found.stat().st_size > MAX_FIGURE_BYTES or len(paper.figures) >= MAX_FIGURES:
+        found = next((p for p in [base, *(base.with_name(base.name + ext) for ext in [*_IMAGE_TYPES, ".pdf"])]
+                      if p.suffix.lower() in {*_IMAGE_TYPES, ".pdf"} and p.is_file()), None)
+        if found is None or len(paper.figures) >= MAX_FIGURES:
             skipped.append(ref)
             continue
-        paper.figures.append((found.relative_to(root).as_posix(), _IMAGE_TYPES[found.suffix.lower()], found.read_bytes()))
+        name = found.relative_to(root).as_posix()
+        try:
+            if found.suffix.lower() == ".pdf":
+                data, media_type = _pdf_to_png(found), "image/png"
+                converted += 1
+            else:
+                data, media_type = found.read_bytes(), _IMAGE_TYPES[found.suffix.lower()]
+        except Exception:  # a damaged figure should not stop the check
+            skipped.append(ref)
+            continue
+        if len(data) > MAX_FIGURE_BYTES:
+            skipped.append(ref)
+            continue
+        paper.figures.append((name, media_type, data))
     if paper.figures:
-        paper.notes.append(f"{len(paper.figures)} figure(s) attached")
+        paper.notes.append(f"{len(paper.figures)} figure(s) attached"
+                           + (f" ({converted} PDF figure(s) turned into images)" if converted else ""))
     if skipped:
-        paper.notes.append(f"figures not sent (vector/EPS/PDF, too large, or over {MAX_FIGURES}): {', '.join(skipped)}")
+        paper.notes.append(f"figures not sent (EPS, missing, damaged, too large, or over {MAX_FIGURES}): {', '.join(skipped)}")
 
 
 def _load_tex(tex: Path, name: str, pdf: Path | None) -> Paper:
@@ -137,7 +163,11 @@ def load(path: Path, pdf: Path | None = None) -> Paper:
         folder = _extract(path)
         tex = _main_tex(folder)
         if pdf is None:
-            pdfs = [tex.with_suffix(".pdf"), *folder.glob("*.pdf")]
-            pdf = next((p for p in pdfs if p.exists() and p.stat().st_size > 50_000), None)  # skip small figure PDFs
-        return _load_tex(tex, path.name, pdf)
+            # Only the compiled paper itself (main.tex -> main.pdf), never a PDF figure.
+            same_name = tex.with_suffix(".pdf")
+            pdf = same_name if same_name.is_file() else None
+        paper = _load_tex(tex, path.name, pdf)
+        if pdf is None:
+            paper.notes.append(f"no compiled PDF named {tex.with_suffix('.pdf').name} in the archive: using the LaTeX only")
+        return paper
     raise ValueError(f"{path.name}: expected a .pdf, .tex, .zip or .tar.gz file")

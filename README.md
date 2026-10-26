@@ -48,7 +48,7 @@ freereport check papers/*.pdf --out reports/
 |---|---|---|
 | PDF | `freereport check paper.pdf` | The rendered paper, including figures. |
 | LaTeX file | `freereport check main.tex` | The exact source, so equations and table numbers are read without PDF errors. Issues cite the file and line, e.g. `main.tex:212`. Files pulled in with `\input{...}` are included. If `main.pdf` sits next to it, the PDF is sent too. |
-| arXiv-style bundle | `freereport check submission.zip` (or `.tar.gz`) | The same zip you would upload to arXiv: it finds the main `.tex` (the one with `\documentclass`), follows its `\input` files, and sends PNG/JPG figures. A compiled PDF inside the bundle is used too. |
+| arXiv-style bundle | `freereport check submission.zip` (or `.tar.gz`) | The same zip you would upload to arXiv: it finds the main `.tex` (the one with `\documentclass`), follows its `\input` files, and sends the figures (PNG/JPG as they are, PDF figures turned into images on your computer). Put the compiled paper in it too, with the same name as the main file (`main.tex` → `main.pdf`), and it reads both. EPS figures are not sent. |
 
 LaTeX comments (`% ...`) are removed before sending, so private notes in your source stay private.
 
