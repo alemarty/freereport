@@ -1,6 +1,8 @@
 # FreeReport
 
-An open-source tool that checks academic papers for **math errors** and **numbers that don't match the tables**, before you submit.
+Free referee report for scientific research. Runs locally (on the researcher's computer), through an API, or on an institution's HPC (high-performance computing) cluster. It lets all researchers get high-quality feedback on their work without high fees, using university resources, and protects scientific integrity and data confidentiality by running locally.
+
+This first version checks academic papers for **math errors** and **numbers that don't match the tables**, before you submit.
 
 It runs three AI "agents" (separate AI calls, each with its own job):
 
