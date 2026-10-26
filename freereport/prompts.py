@@ -44,6 +44,7 @@ Below are candidate findings from two other reviewers. They may contain mistakes
 For each candidate, go back to the manuscript and re-check it independently:
 - keep it only if the quoted text is really in the paper at that location AND the problem holds after your own check;
 - reject it if the reviewer misread the paper, the notation is explained elsewhere, the difference is just rounding, or the claim is a matter of opinion;
+- if two candidates report the same problem, keep the clearer one and mark the other keep=false with duplicate_of set to the kept id;
 - set the final severity and confidence yourself.
 Return one verdict per candidate id, then a short overall summary for the author.
 

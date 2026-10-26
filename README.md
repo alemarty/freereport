@@ -52,9 +52,10 @@ freereport check papers/*.pdf --out reports/
 
 LaTeX comments (`% ...`) are removed before sending, so private notes in your source stay private.
 
-For each paper you get two files in `reports/`:
+For each paper you get three files in `reports/`:
 
-- `my_paper.md`: the readable report.
+- `my_paper.pdf`: the formatted report to read, print or share.
+- `my_paper.md`: the same report as plain text (Markdown).
 - `my_paper.json`: the same results as data, plus token usage and cost (used for testing in step 2).
 
 Options:

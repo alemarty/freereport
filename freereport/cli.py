@@ -7,7 +7,7 @@ from pathlib import Path
 from .backends import ClaudeBackend
 from .paper import load
 from .pipeline import Options, audit
-from .report import to_json, to_markdown
+from .report import to_json, to_markdown, to_pdf
 
 
 def _stem(path: Path) -> str:
@@ -50,8 +50,9 @@ def main(argv: list[str] | None = None) -> int:
         stem = args.out / _stem(path)
         stem.with_suffix(".md").write_text(to_markdown(result, backend.usage), encoding="utf-8")
         stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
+        to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
         cost = backend.usage.cost_usd(args.model)
-        print(f"  {len(result.kept())} issue(s) · report: {stem.with_suffix('.md')}"
+        print(f"  {len(result.kept())} issue(s) · report: {stem.with_suffix('.pdf')}"
               + (f" · cost ≈ ${cost:.2f}" if cost is not None else ""))
     return 1 if failures else 0
 
