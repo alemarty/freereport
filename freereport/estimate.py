@@ -17,7 +17,7 @@ from .prompts import COUNCIL_ROLES
 
 # (low, high) output tokens per call, thinking included
 FINDER = (12_000, 55_000)
-FINDER_DEEP = (40_000, 64_000)
+FINDER_DEEP = (40_000, 100_000)
 SYNTHESIS = (10_000, 40_000)
 BLINDSPOT = (10_000, 40_000)
 COUNCIL = (4_000, 12_000)

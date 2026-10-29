@@ -177,7 +177,7 @@ class ClaudeBackend:
             self._documents[-1]["cache_control"] = {"type": "ephemeral", "ttl": self.cache_ttl}
         params = dict(
             model=self.model,
-            max_tokens=64000,
+            max_tokens=128_000,  # the model's most; deep checks at high effort can think past 64k
             system=system,
             output_config={"effort": effort_for(label, self.effort), "format": {"type": "json_schema", "schema": schema}},
             messages=[{
