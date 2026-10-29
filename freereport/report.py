@@ -100,7 +100,7 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
         lines += [
             "## Council review",
             "",
-            "> Opinions from five reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.",
+            "> Opinions from six reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.",
             "",
             "### Executive verdict",
             "",
@@ -188,7 +188,7 @@ def to_html(result: AuditResult, usage: Usage) -> str:
     if result.decision:
         out += [
             "<h2>Council review</h2>",
-            '<p class="note">Opinions from five reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.</p>',
+            '<p class="note">Opinions from six reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.</p>',
             "<h3>Executive verdict</h3>",
             f"<p>{escape(result.decision.verdict)}</p>",
             *([f'<p><span class="label">Fit with {escape(result.options.journal)}:</span> {escape(result.decision.journal_fit)}</p>']

@@ -95,7 +95,7 @@ def test_optional_modes():
     result = audit(load(SAMPLE), backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
     labels = [c["agent"] for c in backend.usage.calls]
     assert labels.count("adversary_blindspot") == 1
-    assert sum(l.startswith("council_") for l in labels) == 5
+    assert sum(l.startswith("council_") for l in labels) == 6
     assert "M2" in [f.id for f in result.candidates]
     md = to_markdown(result, backend.usage)
     assert "Council review" in md and "Fix Eq. 3" in md and "council_Outsider point" in md
@@ -124,7 +124,7 @@ def test_journal_reaches_every_council_member_and_the_report():
     backend = FakeBackend()
     result = audit(load(SAMPLE), backend, Options(council=True, journal="Nature Communications"), log=lambda *_: None)
     council_tasks = [t for label, t in backend.tasks.items() if label.startswith("council_")]
-    assert len(council_tasks) == 5 and all("Nature Communications" in t for t in council_tasks)
+    assert len(council_tasks) == 6 and all("Nature Communications" in t for t in council_tasks)
     md = to_markdown(result, backend.usage)
     assert "**Fit with Nature Communications:** Good fit, shorten the intro." in md
 
