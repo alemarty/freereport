@@ -215,7 +215,9 @@ freereport check examples/sample_paper.pdf
 
 ## How it keeps costs down
 
-The paper is sent once and cached (stored temporarily by the API), so agents 2 and 3 pay about a tenth of the normal price to re-read it. The cache normally lasts 5 minutes. For runs that re-read the paper many times or include a long call (`--council`, `--blindspot`, `--deepdive`, `respond`, `resubmit`), Claude keeps it for 1 hour instead. Writing it costs a bit more once ($8 instead of $5 per million tokens on Opus), but it never expires mid-run and has to be paid again. On a 270k-token paper this cuts the worst-case cost of `--council` from about $17 to about $7. Each report shows the cost.
+The paper is sent once and cached (stored temporarily by the API), so agents 2 and 3 pay about a tenth of the normal price to re-read it. The cache normally lasts 5 minutes. For runs that re-read the paper many times or include a long call (`--council`, `--blindspot`, `--deepdive`, `respond`, `resubmit`), Claude keeps it for 1 hour instead. Writing it costs a bit more once ($8 instead of $5 per million tokens on Opus), but it never expires mid-run and has to be paid again. On a 270k-token paper this cuts the worst-case cost of `--council` from about $17 to about $7.
+
+The LaTeX source is sent lean: comments and switched-off blocks (`\begin{comment}`, `\iffalse ... \fi`) are left out, and each file name is written once as a header instead of on every line, which makes the source about a quarter shorter. `--overnight` halves the whole bill. Each report shows the cost.
 
 ## Tests
 
