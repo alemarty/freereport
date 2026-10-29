@@ -105,7 +105,7 @@ Change them with `--max-tokens 600000` or `--max-cost 40`. When checking several
 Options:
 
 - `--model ...`: which AI to use (see [Choose the AI](#choose-the-ai)).
-- `--effort medium`: think less, cost less. Default is `high`.
+- `--effort medium`: think less, cost less. Default is `high` for the steps that find and verify errors, judge referee comments and write the council's opinions; steps that only sort, summarise or match text (splitting referee reports, overviews, the resubmission status and letter checks) use `medium` on their own. `--effort` never raises them above what you choose.
 
 ### Modes
 
