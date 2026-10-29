@@ -62,7 +62,7 @@ def _add_modes(p: argparse.ArgumentParser, quick_help: str = "Baseline only: the
     p.add_argument("--quick", action="store_true", help=quick_help)
     p.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
     p.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
-    p.add_argument("--council", action="store_true", help="Add a 5-role opinion review of the whole paper.")
+    p.add_argument("--council", action="store_true", help="Add a 6-role opinion review of the whole paper, including a methods (identification and statistics) referee.")
     p.add_argument("--journal", default="", help='Target journal, e.g. --journal "Nature Communications": the council also judges fit, tone and style for it (turns on --council).')
 
 

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from .backends import PRICES
 from .paper import Paper
 from .pipeline import Options
+from .prompts import COUNCIL_ROLES
 
 # (low, high) output tokens per call, thinking included
 FINDER = (12_000, 55_000)
@@ -61,7 +62,7 @@ def plan_check(opts: Options) -> list[Call]:
         calls += [Call("adversary_blindspot", BLINDSPOT), Call("data_auditor_blindspot", BLINDSPOT)]
     calls.append(Call("synthesis", SYNTHESIS))
     if opts.council:
-        calls += [Call(f"council_{n}", COUNCIL) for n in range(5)]
+        calls += [Call(f"council_{n}", COUNCIL) for n in range(len(COUNCIL_ROLES) + 1)]  # roles + Executive
     return calls
 
 

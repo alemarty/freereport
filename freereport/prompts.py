@@ -76,7 +76,7 @@ REVIEWER TASK:
 DRAFT FINDINGS (JSON):
 {draft}"""
 
-COUNCIL_INTRO = """You are one member of a five-person council giving pre-submission feedback on the manuscript as a whole.
+COUNCIL_INTRO = """You are one member of a six-person council giving pre-submission feedback on the manuscript as a whole.
 This is opinion, kept separate from the verified error list, but it must still be specific: tie each point to the
 paper's actual content and give a page number (0 if it is about the whole paper). At most 6 points, most important first.
 
@@ -98,11 +98,20 @@ COUNCIL_ROLES = {
     "evidence already supports, natural extensions, additional robustness checks or audiences that would raise the paper's impact.",
     "Outsider": "The Outsider (zero-context reader). Read as a smart non-specialist. Flag undefined notation or jargon, steps that "
     "assume insider knowledge, and places where the main message is hard to follow.",
+    "Methods Referee": "The Methods Referee (identification and statistics), for any field that uses data: economics, "
+    "epidemiology, medicine, psychology, ecology, political science, engineering. Judge whether the empirical design supports "
+    "the claims as stated. Check: how treatment or exposure is assigned and timed, and whether the comparison group is valid; "
+    "confounders and controls, including fixed effects that are collinear or absorb the variation of interest; how the sample, "
+    "risk set or denominator is defined, and selection or attrition; whether the level of clustering, random effects or "
+    "standard errors matches the level at which treatment varies; pre-trends, multiple testing and power; whether estimates "
+    "are causal or only associations, as claimed; and whether local or partial-equilibrium estimates are scaled up to totals. "
+    "Name the specific equation, table or figure and propose one concrete check or fix for each point. If the paper has no "
+    "empirical part, check instead that the model's assumptions fit the setting it claims to describe.",
 }
 
-COUNCIL_EXECUTIVE = """You are the Executive (chair) of a five-person council giving pre-submission feedback on the manuscript.
+COUNCIL_EXECUTIVE = """You are the Executive (chair) of a six-person council giving pre-submission feedback on the manuscript.
 {journal_rule}
-Below are the verified error findings and the opinions of the other four members. Weigh them, discard weak or
+Below are the verified error findings and the opinions of the other five members. Weigh them, discard weak or
 contradictory points, and give a verdict plus an ordered, practical revision plan for the author.
 
 VERIFIED FINDINGS (JSON):

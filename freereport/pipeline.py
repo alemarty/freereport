@@ -3,7 +3,7 @@
 Optional modes:
 - deepdive:  slower, more exhaustive checking by the finder agents.
 - blindspot: each finder re-scans its own draft for missed assumptions and gaps.
-- council:   five-role opinion review of the whole paper, reported separately.
+- council:   six-role opinion review of the whole paper, reported separately.
 """
 
 import json

@@ -13,7 +13,7 @@ def test_more_modes_cost_more_and_the_range_is_ordered():
     full = estimate.estimate(271_579, estimate.plan_check(Options(deepdive=True, blindspot=True, council=True)),
                              "claude-opus-5-5")
     assert 0 < base.low < base.high < full.high and base.low < full.low
-    assert len(base.calls) == 3 and len(full.calls) == 10
+    assert len(base.calls) == 3 and len(full.calls) == 11
     # a real 272k-token paper cost $3.70 with the baseline: the range must contain it
     assert base.low < 3.70 < base.high
 
