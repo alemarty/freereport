@@ -8,6 +8,7 @@ the company is chosen from the model name. Each user brings their own key.
 import base64
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -75,6 +76,7 @@ class Usage:
     cache_write_1h: int = 0
     cache_read: int = 0
     calls: list[dict] = field(default_factory=list)
+    discount: float = 1.0  # 0.5 in overnight (batch) mode: every token costs half
 
     def add(self, label: str, u) -> None:
         """Add a Claude usage object."""
@@ -104,7 +106,7 @@ class Usage:
             + self.cache_write * p["cache_write"]
             + self.cache_write_1h * p.get("cache_write_1h", p["cache_write"])
             + self.cache_read * p["cache_read"]
-        ) / 1_000_000
+        ) * self.discount / 1_000_000
 
 
 class RefusedError(RuntimeError):
@@ -143,7 +145,7 @@ class ClaudeBackend:
             self._documents.append({
                 "type": "document",
                 "source": {"type": "text", "media_type": "text/plain", "data": paper.tex_numbered},
-                "title": "Manuscript (LaTeX source, 'file:line|' prefixes)",
+                "title": "Manuscript (LaTeX source, 'line|' prefixes under '=== file: name ===' headers)",
             })
         for name, media_type, data in paper.figures:
             self._documents.append({"type": "text", "text": f"Figure file: {name}"})
@@ -152,6 +154,8 @@ class ClaudeBackend:
                 "source": {"type": "base64", "media_type": media_type, "data": base64.standard_b64encode(data).decode()},
             })
         self.cache_ttl = "5m"  # "1h" for runs that re-read the paper many times (set by the cost estimate)
+        self.overnight = False  # True: send each call through the Batch API at half price; answers take minutes to hours
+        self.poll_seconds = 60
         if self._documents:  # nothing to cache in a light check that sends no manuscript
             self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
@@ -171,7 +175,7 @@ class ClaudeBackend:
 
         if self._documents:
             self._documents[-1]["cache_control"] = {"type": "ephemeral", "ttl": self.cache_ttl}
-        with self.client.messages.stream(
+        params = dict(
             model=self.model,
             max_tokens=64000,
             system=system,
@@ -180,10 +184,13 @@ class ClaudeBackend:
                 "role": "user",
                 "content": [*self._documents, {"type": "text", "text": task}],
             }],
-            extra_body=extra_body or None,
-            extra_headers=extra_headers or None,
-        ) as stream:
-            message = stream.get_final_message()
+        )
+        if self.overnight:
+            message = self._batch(label, params)  # the Batch API does not take the safety fallback
+        else:
+            with self.client.messages.stream(**params, extra_body=extra_body or None,
+                                             extra_headers=extra_headers or None) as stream:
+                message = stream.get_final_message()
 
         self.usage.add(label, message.usage)
         if message.stop_reason == "refusal":
@@ -192,6 +199,21 @@ class ClaudeBackend:
             raise RuntimeError(f"{label}: output was cut off at max_tokens")
         text = next(b.text for b in message.content if b.type == "text")
         return json.loads(text)
+
+
+    def _batch(self, label: str, params: dict):
+        """One call through the Batch API: half price, answered within 24 hours (usually under one)."""
+        from anthropic.types.messages.batch_create_params import Request
+
+        batch = self.client.messages.batches.create(requests=[Request(custom_id=label, params=params)])
+        while batch.processing_status != "ended":
+            time.sleep(self.poll_seconds)
+            batch = self.client.messages.batches.retrieve(batch.id)
+        result = next(iter(self.client.messages.batches.results(batch.id))).result
+        if result.type != "succeeded":
+            detail = getattr(getattr(result, "error", None), "error", None) or result.type
+            raise RuntimeError(f"{label}: overnight request did not finish ({detail})")
+        return result.message
 
 
 def _need(module: str, extra: str):
@@ -220,7 +242,7 @@ class OpenAIBackend:
                                     "file_data": f"data:application/pdf;base64,{pdf_b64}"})
         if paper.tex_lines:
             self._documents.append({"type": "input_text",
-                                    "text": "Manuscript (LaTeX source, 'file:line|' prefixes):\n" + paper.tex_numbered})
+                                    "text": "Manuscript (LaTeX source, 'line|' prefixes under '=== file: name ===' headers):\n" + paper.tex_numbered})
         for name, media_type, data in paper.figures:
             self._documents.append({"type": "input_text", "text": f"Figure file: {name}"})
             self._documents.append({"type": "input_image",
@@ -278,7 +300,7 @@ class GeminiBackend:
             self._documents.append(t.Part.from_bytes(data=paper.pdf_path.read_bytes(), mime_type="application/pdf"))
         if paper.tex_lines:
             self._documents.append(t.Part.from_text(
-                text="Manuscript (LaTeX source, 'file:line|' prefixes):\n" + paper.tex_numbered))
+                text="Manuscript (LaTeX source, 'line|' prefixes under '=== file: name ===' headers):\n" + paper.tex_numbered))
         for name, media_type, data in paper.figures:
             self._documents.append(t.Part.from_text(text=f"Figure file: {name}"))
             self._documents.append(t.Part.from_bytes(data=data, mime_type=media_type))

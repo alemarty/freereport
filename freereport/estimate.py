@@ -47,12 +47,14 @@ class Estimate:
     low: float | None
     high: float | None
     exact_count: bool  # False when the free count failed and the size was guessed
+    overnight: bool = False  # batch mode: half price, answers within hours
 
     def line(self) -> str:
         size = f"paper {self.paper_tokens / 1000:.0f}k tokens" + ("" if self.exact_count else " (rough guess)")
         if self.low is None:
             return f"Estimated cost: unknown for this model ({size} · {len(self.calls)} AI calls)"
-        return f"Estimated cost: ${self.low:.2f} – {self.high:.2f}  ({size} · {len(self.calls)} AI calls)"
+        mode = " · overnight, half price" if self.overnight else ""
+        return f"Estimated cost: ${self.low:.2f} – {self.high:.2f}  ({size} · {len(self.calls)} AI calls{mode})"
 
 
 def plan_check(opts: Options) -> list[Call]:
@@ -128,7 +130,15 @@ def wants_long_cache(calls: list[Call]) -> bool:
 
 
 def estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool = True,
-             long_cache: bool = False) -> Estimate:
+             long_cache: bool = False, overnight: bool = False) -> Estimate:
+    """Low and high cost in dollars. Overnight (batch) runs pay half for every token."""
+    est = _estimate(paper_tokens, calls, model, exact_count, long_cache)
+    if overnight and est.low is not None:
+        est.low, est.high, est.overnight = est.low / 2, est.high / 2, True
+    return est
+
+
+def _estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool, long_cache: bool) -> Estimate:
     p = PRICES.get(model)
     if p is None:
         return Estimate(paper_tokens, calls, None, None, exact_count)
