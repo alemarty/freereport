@@ -15,7 +15,7 @@ from .paper import Paper
 from .pipeline import Options
 
 # (low, high) output tokens per call, thinking included
-FINDER = (20_000, 55_000)
+FINDER = (12_000, 55_000)
 FINDER_DEEP = (40_000, 64_000)
 SYNTHESIS = (10_000, 40_000)
 BLINDSPOT = (10_000, 40_000)
@@ -26,7 +26,7 @@ OVERVIEW = (4_000, 12_000)
 STATUS = (8_000, 30_000)
 LETTER = (8_000, 25_000)
 TASK_TOKENS = 3_000  # instructions and earlier results added to each call
-LONG_CALL = 30_000  # output tokens after which the 5-minute cache may have expired
+LONG_CALL = 10_000  # output tokens after which the 5-minute cache has likely expired (seen on a real run)
 
 
 @dataclass

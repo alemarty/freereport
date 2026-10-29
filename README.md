@@ -63,7 +63,7 @@ For each paper you get three files in `reports/`:
 Before spending anything, FreeReport measures your paper with the API's free token counter and shows a price range, then asks:
 
 ```
-Estimated cost: $1.82 – 5.21  (paper 145k tokens · 3 AI calls)
+Estimated cost: $2.18 – 7.11  (paper 272k tokens · 3 AI calls)
 Continue? [y/N]
 ```
 
