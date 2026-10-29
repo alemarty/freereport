@@ -28,6 +28,10 @@ def _stem(path: Path) -> str:
 def _add_cost(p: argparse.ArgumentParser) -> None:
     p.add_argument("--estimate", action="store_true", help="Only show the estimated cost; do not run (free).")
     p.add_argument("--yes", "-y", action="store_true", help="Do not ask before spending; run straight after showing the estimate.")
+    p.add_argument("--max-tokens", type=int, default=estimate.MAX_TOKENS,
+                   help=f"Refuse papers larger than this many tokens, before any paid call (default {estimate.MAX_TOKENS:,}).")
+    p.add_argument("--max-cost", type=float, default=estimate.MAX_COST,
+                   help=f"Refuse runs whose upper estimate is above this many dollars (default {estimate.MAX_COST:.0f}).")
 
 
 def _paper_tokens(backend, paper: Paper, system: str) -> tuple[int, bool]:
@@ -38,8 +42,12 @@ def _paper_tokens(backend, paper: Paper, system: str) -> tuple[int, bool]:
         return estimate.rough_tokens(paper), False
 
 
-def _go(est: "estimate.Estimate", args) -> bool:
-    """True when the run should go ahead (prints the estimate first)."""
+def _go(est: "estimate.Estimate", args, paper: Paper | None = None, limits: bool = True) -> bool:
+    """True when the run should go ahead (checks the limits, prints the estimate first)."""
+    problem = estimate.limit_problem(paper, est, args.max_tokens, args.max_cost) if limits else ""
+    if problem:
+        print(problem, file=sys.stderr)
+        return False
     if args.estimate:
         print(est.line())
         return False
@@ -121,6 +129,11 @@ def main(argv: list[str] | None = None) -> int:
             continue
         tokens, exact = _paper_tokens(backend, paper, prompts.SYSTEM)
         est = estimate.estimate(tokens, estimate.plan_check(opts), args.model, exact)
+        too_big = estimate.limit_problem(paper, est, args.max_tokens, args.max_cost)  # limits apply per paper
+        if too_big:
+            print(f"  {too_big}", file=sys.stderr)
+            failures += 1
+            continue
         if len(args.papers) > 1:
             print(f"  {est.line()}")
         ready.append((path, paper, backend, est))
@@ -132,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
                               None if ready[0][3].low is None else sum(e.low for *_, e in ready),
                               None if ready[0][3].low is None else sum(e.high for *_, e in ready),
                               all(e.exact_count for *_, e in ready))
-    if not _go(total, args):
+    if not _go(total, args, limits=False):
         return 1 if failures else 0
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -160,7 +173,7 @@ def _respond(args) -> int:
         print(f"  {note}")
     backend = ClaudeBackend(paper, model=args.model, effort=args.effort)
     tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
-    if not _go(estimate.estimate(tokens, estimate.plan_respond(len(args.reviews)), args.model, exact), args):
+    if not _go(estimate.estimate(tokens, estimate.plan_respond(len(args.reviews)), args.model, exact), args, paper):
         return 0
     result = referee.respond(paper, args.reviews, backend)
 
@@ -205,7 +218,7 @@ def _resubmit(args, opts: Options) -> int:
     n_reports = len(args.reviews) or len({c["id"].split(".")[0] for c in _previous_comments(args.previous)})
     calls = estimate.plan_resubmit(opts, n_reports, bool(args.letter), args.quick, args.no_check,
                                    reuse_comments=bool(args.previous), changes_tokens=changes_tokens)
-    if not _go(estimate.estimate(tokens, calls, args.model, exact), args):
+    if not _go(estimate.estimate(tokens, calls, args.model, exact), args, revised):
         return 0
     args.out.mkdir(parents=True, exist_ok=True)
 

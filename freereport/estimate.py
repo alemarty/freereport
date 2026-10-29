@@ -26,6 +26,8 @@ OVERVIEW = (4_000, 12_000)
 STATUS = (8_000, 30_000)
 LETTER = (8_000, 25_000)
 TASK_TOKENS = 3_000  # instructions and earlier results added to each call
+MAX_TOKENS = 400_000  # default size limit: about 150 pages with figures
+MAX_COST = 25.0  # default price cap, in dollars, on the high end of the estimate
 LONG_CALL = 10_000  # output tokens after which the 5-minute cache has likely expired (seen on a real run)
 
 
@@ -87,6 +89,33 @@ def rough_tokens(paper: Paper) -> int:
     tex = len(paper.tex_numbered) / 3.3
     pdf = 1_500 * len(paper.pages) if paper.pdf_path else 0
     return int(tex + pdf + 1_600 * len(paper.figures))
+
+
+def size_parts(paper: Paper, paper_tokens: int) -> tuple[int, int]:
+    """Split the exact size into (text, figures), using the offline guess for the proportions."""
+    guess = rough_tokens(paper) or 1
+    figures = int(paper_tokens * 1_600 * len(paper.figures) / guess)
+    return paper_tokens - figures, figures
+
+
+def limit_problem(paper: Paper | None, est: Estimate, max_tokens: int, max_cost: float) -> str:
+    """Why the run is refused before any paid call, with what to shrink; empty when it is within limits."""
+    if paper is not None and est.paper_tokens > max_tokens:
+        text, figures = size_parts(paper, est.paper_tokens)
+        pages = f" · {len(paper.pages)} pages" if paper.pages else ""
+        parts = [f"text about {text / 1000:.0f}k"]
+        if paper.figures:
+            parts.append(f"figures about {figures / 1000:.0f}k ({len(paper.figures)} figures)")
+        tip = ("Try removing some figures or the appendix" if figures > text
+               else "Try removing the appendix or sending only the sections you want checked")
+        return (f"Paper too large: {est.paper_tokens / 1000:.0f}k tokens{pages}; the limit is {max_tokens / 1000:.0f}k.\n"
+                f"  Size: {', '.join(parts)}.\n"
+                f"  {tip}, then run again. Nothing was spent.")
+    if est.high is not None and est.high > max_cost:
+        return (f"{est.line()}\n"
+                f"  The upper estimate is above the ${max_cost:.0f} cap. Drop an extra mode or shrink the paper"
+                f" (or raise the cap with --max-cost). Nothing was spent.")
+    return ""
 
 
 def estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool = True) -> Estimate:
