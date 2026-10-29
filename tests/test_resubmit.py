@@ -144,7 +144,7 @@ def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "ClaudeBackend", Dummy)
     monkeypatch.setattr(cli, "audit", fake_audit)
     args = ["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
-            "--reviews", str(REPORTS[0]), "--out", str(tmp_path)]
+            "--reviews", str(REPORTS[0]), "--out", str(tmp_path), "--yes"]
     try:
         cli.main(args + ["--deepdive", "--council"])
     except SystemExit:
@@ -203,7 +203,7 @@ def test_quick_resubmit_sends_no_paper_and_skips_the_error_check(tmp_path, monke
     monkeypatch.setattr(cli, "ClaudeBackend", fake_backend)
     monkeypatch.setattr(cli, "audit", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no error check in --quick")))
     cli.main(["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
-              "--reviews", *map(str, REPORTS), "--quick", "--out", str(tmp_path)])
+              "--reviews", *map(str, REPORTS), "--quick", "--out", str(tmp_path), "--yes"])
     assert built["paper"].pdf_path is None and not built["paper"].tex_lines  # only the change list is sent
     md = (tmp_path / "sample_paper_revised_resubmission.md").read_text()
     assert "Quick check: only the list of changes" in md

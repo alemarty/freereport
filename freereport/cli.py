@@ -6,11 +6,12 @@
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from .backends import ClaudeBackend
-from . import referee, resubmit
+from . import estimate, prompts, referee, resubmit
 from .paper import Paper, load
 from .pipeline import Options, audit
 from .report import to_json, to_markdown, to_pdf
@@ -22,6 +23,30 @@ def _stem(path: Path) -> str:
         if name.lower().endswith(suffix):
             return name[: -len(suffix)]
     return path.stem
+
+
+def _add_cost(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--estimate", action="store_true", help="Only show the estimated cost; do not run (free).")
+    p.add_argument("--yes", "-y", action="store_true", help="Do not ask before spending; run straight after showing the estimate.")
+
+
+def _paper_tokens(backend, paper: Paper, system: str) -> tuple[int, bool]:
+    """Exact size from the free token counter; a rough offline guess if that fails (e.g. no network)."""
+    try:
+        return backend.count_tokens(system), True
+    except Exception:
+        return estimate.rough_tokens(paper), False
+
+
+def _go(est: "estimate.Estimate", args) -> bool:
+    """True when the run should go ahead (prints the estimate first)."""
+    if args.estimate:
+        print(est.line())
+        return False
+    if not estimate.confirm(est, args.yes):
+        print("Stopped before any paid call. Nothing was spent.")
+        return False
+    return True
 
 
 def _add_modes(p: argparse.ArgumentParser, quick_help: str = "Baseline only: the 3 core agents, no extra modes (the cheapest run; same as giving no mode).") -> None:
@@ -42,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--model", default="claude-opus-5-5")
     check.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     _add_modes(check)
+    _add_cost(check)
 
     resp = sub.add_parser("respond", help="Check, rank and answer referee reports for a paper.")
     resp.add_argument("paper", type=Path, help="The paper: PDF, .tex or source bundle. With LaTeX you also get concrete edits.")
@@ -49,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     resp.add_argument("--out", type=Path, default=Path("reports"))
     resp.add_argument("--model", default="claude-opus-5-5")
     resp.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+    _add_cost(resp)
 
     resub = sub.add_parser("resubmit", help="Before resubmitting: check the revised paper against the original and the referee reports.")
     resub.add_argument("paper", type=Path, help="The REVISED paper: PDF, .tex or source bundle.")
@@ -61,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     resub.add_argument("--out", type=Path, default=Path("reports"))
     resub.add_argument("--model", default="claude-opus-5-5")
     resub.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+    _add_cost(resub)
 
     args = parser.parse_args(argv)
     if args.command == "respond":
@@ -79,8 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         return _resubmit(args, opts)
     effort = "max" if args.deepdive else args.effort
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    failures = 0
+    failures, ready = 0, []
     for path in args.papers:
         print(f"\n== {path.name}")
         try:
@@ -88,8 +115,32 @@ def main(argv: list[str] | None = None) -> int:
             for note in paper.notes:
                 print(f"  {note}")
             backend = ClaudeBackend(paper, model=args.model, effort=effort)
-            result = audit(paper, backend, opts)
         except Exception as exc:  # keep going through a batch of papers
+            print(f"  FAILED: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        tokens, exact = _paper_tokens(backend, paper, prompts.SYSTEM)
+        est = estimate.estimate(tokens, estimate.plan_check(opts), args.model, exact)
+        if len(args.papers) > 1:
+            print(f"  {est.line()}")
+        ready.append((path, paper, backend, est))
+    if not ready:
+        return 1
+    if len(ready) > 1:
+        print(f"\nAll {len(ready)} papers together:")
+    total = estimate.Estimate(sum(e.paper_tokens for *_, e in ready), [c for *_, e in ready for c in e.calls],
+                              None if ready[0][3].low is None else sum(e.low for *_, e in ready),
+                              None if ready[0][3].low is None else sum(e.high for *_, e in ready),
+                              all(e.exact_count for *_, e in ready))
+    if not _go(total, args):
+        return 1 if failures else 0
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    for path, paper, backend, _ in ready:
+        print(f"\n== {path.name}")
+        try:
+            result = audit(paper, backend, opts)
+        except Exception as exc:
             print(f"  FAILED: {exc}", file=sys.stderr)
             failures += 1
             continue
@@ -104,13 +155,16 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _respond(args) -> int:
-    args.out.mkdir(parents=True, exist_ok=True)
     paper = load(args.paper)
     for note in paper.notes:
         print(f"  {note}")
     backend = ClaudeBackend(paper, model=args.model, effort=args.effort)
+    tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
+    if not _go(estimate.estimate(tokens, estimate.plan_respond(len(args.reviews)), args.model, exact), args):
+        return 0
     result = referee.respond(paper, args.reviews, backend)
 
+    args.out.mkdir(parents=True, exist_ok=True)
     stem = args.out / f"{_stem(args.paper)}_referee_response"
     stem.with_suffix(".md").write_text(referee.to_markdown(result, backend.usage), encoding="utf-8")
     stem.with_suffix(".json").write_text(referee.to_json(result, backend.usage), encoding="utf-8")
@@ -126,8 +180,13 @@ def _respond(args) -> int:
     return 0
 
 
+def _previous_comments(path: Path | None) -> list[dict]:
+    if not path:
+        return []
+    return json.loads(Path(path).read_text(encoding="utf-8")).get("comments", [])
+
+
 def _resubmit(args, opts: Options) -> int:
-    args.out.mkdir(parents=True, exist_ok=True)
     original, revised = load(args.original), load(args.paper)
     for note in revised.notes:
         print(f"  revised: {note}")
@@ -136,6 +195,19 @@ def _resubmit(args, opts: Options) -> int:
     # --quick: send only the change list, not the paper, so the run costs a fraction of a full one
     backend = ClaudeBackend(Paper(name=revised.name) if args.quick else revised, model=args.model, effort=args.effort)
     stem = _stem(args.paper)
+
+    changes, _ = resubmit.compare(original, revised)  # free, on this computer
+    changes_tokens = len(resubmit.changes_text(changes)) // 3
+    if args.quick:
+        tokens, exact = 0, True
+    else:
+        tokens, exact = _paper_tokens(backend, revised, prompts.RESUBMIT_SYSTEM)
+    n_reports = len(args.reviews) or len({c["id"].split(".")[0] for c in _previous_comments(args.previous)})
+    calls = estimate.plan_resubmit(opts, n_reports, bool(args.letter), args.quick, args.no_check,
+                                   reuse_comments=bool(args.previous), changes_tokens=changes_tokens)
+    if not _go(estimate.estimate(tokens, calls, args.model, exact), args):
+        return 0
+    args.out.mkdir(parents=True, exist_ok=True)
 
     check_summary = ""
     if not args.no_check and not args.quick:
