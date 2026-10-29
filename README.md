@@ -74,6 +74,18 @@ Nothing is spent unless you type `y`. The range is wide because the AI's thinkin
 
 Works the same for `respond` and `resubmit`.
 
+**Limits.** Two checks run before anything is paid:
+
+- **Size:** a paper over **400k tokens** (about 150 pages with figures) is refused, with what makes it big and what to cut:
+  ```
+  Paper too large: 520k tokens · 160 pages; the limit is 400k.
+    Size: text about 400k, figures about 120k (45 figures).
+    Try removing the appendix or sending only the sections you want checked, then run again. Nothing was spent.
+  ```
+- **Price:** a run whose upper estimate is above **$25** is refused.
+
+Change them with `--max-tokens 600000` or `--max-cost 40`. When checking several papers, the limits apply to each paper.
+
 Options:
 
 - `--model claude-sonnet-5-5`: cheaper model (about half the price).
