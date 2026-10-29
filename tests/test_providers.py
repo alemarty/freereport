@@ -105,3 +105,12 @@ def test_estimate_for_gpt_and_gemini_has_no_guaranteed_cache():
         assert est.low < est.high
         p = backends.PRICES[model]
         assert est.high >= 272_000 * 3 * p["input"] / 1e6  # every call may pay full price for the paper
+
+
+def test_light_steps_think_at_medium_and_never_above_the_users_choice():
+    assert backends.effort_for("referee_split", "high") == "medium"
+    assert backends.effort_for("resubmit_status_R1", "max") == "medium"
+    assert backends.effort_for("resubmit_letter", "low") == "low"  # never raised
+    assert backends.effort_for("adversary", "high") == "high"  # finding errors keeps the chosen level
+    assert backends.effort_for("referee_assess_R1", "high") == "high"
+    assert backends.effort_for("council_Methods Referee", "high") == "high"

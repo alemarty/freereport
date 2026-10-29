@@ -31,6 +31,19 @@ PRICES = {
 KEYS = {"anthropic": ["ANTHROPIC_API_KEY"], "openai": ["OPENAI_API_KEY"], "google": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]}
 
 
+# Steps that sort, summarise or match text think at medium effort; finding and
+# verifying errors, judging referee claims and the council keep the chosen level.
+LIGHT_STEPS = ("referee_split", "referee_overview", "resubmit_split", "resubmit_status", "resubmit_overview", "resubmit_letter")
+_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+
+def effort_for(label: str, effort: str) -> str:
+    """The effort for one step: never above medium for the light steps, never above what the user chose."""
+    if label.startswith(LIGHT_STEPS) and effort in _LEVELS and _LEVELS.index(effort) > _LEVELS.index("medium"):
+        return "medium"
+    return effort
+
+
 def provider(model: str) -> str:
     """Which company serves this model, from its name."""
     if model.startswith("gpt-") or model[:2] in {"o1", "o3", "o4"}:
@@ -151,7 +164,7 @@ class ClaudeBackend:
             model=self.model,
             max_tokens=64000,
             system=system,
-            output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": schema}},
+            output_config={"effort": effort_for(label, self.effort), "format": {"type": "json_schema", "schema": schema}},
             messages=[{
                 "role": "user",
                 "content": [*self._documents, {"type": "text", "text": task}],
@@ -215,7 +228,7 @@ class OpenAIBackend:
             model=self.model,
             instructions=system,
             input=self._input(task),
-            reasoning={"effort": self.effort},
+            reasoning={"effort": effort_for(label, self.effort)},
             text={"format": {"type": "json_schema", "name": "result", "schema": schema, "strict": True}},
             max_output_tokens=128_000,
             prompt_cache_key=self._cache_key,
@@ -271,7 +284,7 @@ class GeminiBackend:
             system_instruction=system,
             response_mime_type="application/json",
             response_json_schema=schema,
-            thinking_config=t.ThinkingConfig(thinking_level=self.LEVELS.get(self.effort, "high")),
+            thinking_config=t.ThinkingConfig(thinking_level=self.LEVELS.get(effort_for(label, self.effort), "high")),
             max_output_tokens=65_536,
         )
         text, last = [], None
