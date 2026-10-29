@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from .backends import ClaudeBackend
+from .backends import make_backend
 from . import estimate, prompts, referee, resubmit
 from .paper import Paper, load
 from .pipeline import Options, audit
@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     check = sub.add_parser("check", help="Audit one or more papers (.pdf or .tex).")
     check.add_argument("papers", nargs="+", type=Path, help="PDF, LaTeX (.tex) or arXiv-style source bundle (.zip / .tar.gz). For a .tex file, a PDF with the same name next to it is used too.")
     check.add_argument("--out", type=Path, default=Path("reports"), help="Folder for the reports (default: reports/).")
-    check.add_argument("--model", default="claude-opus-5-5")
+    check.add_argument("--model", default="claude-opus-5-5", help="Claude (default), GPT or Gemini model, e.g. gpt-6.1-sol or gemini-4-argon.")
     check.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     _add_modes(check)
     _add_cost(check)
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     resp.add_argument("paper", type=Path, help="The paper: PDF, .tex or source bundle. With LaTeX you also get concrete edits.")
     resp.add_argument("--reviews", nargs="+", type=Path, required=True, help="Referee reports (.pdf, .docx, .txt or .md), one file per referee.")
     resp.add_argument("--out", type=Path, default=Path("reports"))
-    resp.add_argument("--model", default="claude-opus-5-5")
+    resp.add_argument("--model", default="claude-opus-5-5", help="Claude (default), GPT or Gemini model, e.g. gpt-6.1-sol or gemini-4-argon.")
     resp.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     _add_cost(resp)
 
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     resub.add_argument("--no-check", action="store_true", help="Skip the error check of the revised paper.")
     _add_modes(resub, quick_help="Cheap double-check: sends only the list of changes (not the whole paper) and skips the error check.")
     resub.add_argument("--out", type=Path, default=Path("reports"))
-    resub.add_argument("--model", default="claude-opus-5-5")
+    resub.add_argument("--model", default="claude-opus-5-5", help="Claude (default), GPT or Gemini model, e.g. gpt-6.1-sol or gemini-4-argon.")
     resub.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     _add_cost(resub)
 
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             paper = load(path)
             for note in paper.notes:
                 print(f"  {note}")
-            backend = ClaudeBackend(paper, model=args.model, effort=effort)
+            backend = make_backend(paper, model=args.model, effort=effort)
         except Exception as exc:  # keep going through a batch of papers
             print(f"  FAILED: {exc}", file=sys.stderr)
             failures += 1
@@ -171,7 +171,7 @@ def _respond(args) -> int:
     paper = load(args.paper)
     for note in paper.notes:
         print(f"  {note}")
-    backend = ClaudeBackend(paper, model=args.model, effort=args.effort)
+    backend = make_backend(paper, model=args.model, effort=args.effort)
     tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
     if not _go(estimate.estimate(tokens, estimate.plan_respond(len(args.reviews)), args.model, exact), args, paper):
         return 0
@@ -206,7 +206,7 @@ def _resubmit(args, opts: Options) -> int:
     for note in original.notes:
         print(f"  original: {note}")
     # --quick: send only the change list, not the paper, so the run costs a fraction of a full one
-    backend = ClaudeBackend(Paper(name=revised.name) if args.quick else revised, model=args.model, effort=args.effort)
+    backend = make_backend(Paper(name=revised.name) if args.quick else revised, model=args.model, effort=args.effort)
     stem = _stem(args.paper)
 
     changes, _ = resubmit.compare(original, revised)  # free, on this computer

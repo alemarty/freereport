@@ -131,7 +131,10 @@ def estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool
         # low: one cache write, then cheap cache reads.
         # high: the cache is written again after every call that may run past its 5 minutes.
         paper_low = paper_tokens * (p["cache_write"] + p["cache_read"] * (len(readers) - 1)) * per_m
-        writes = sum(1 for i, c in enumerate(readers) if i == 0 or readers[i - 1].out[1] >= LONG_CALL)
+        if p.get("implicit_cache"):  # GPT / Gemini cache on their own, without a guarantee
+            writes = len(readers)
+        else:
+            writes = sum(1 for i, c in enumerate(readers) if i == 0 or readers[i - 1].out[1] >= LONG_CALL)
         paper_high = paper_tokens * (p["cache_write"] * writes + p["cache_read"] * (len(readers) - writes)) * per_m
     else:
         paper_low = paper_high = 0.0
