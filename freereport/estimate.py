@@ -119,7 +119,16 @@ def limit_problem(paper: Paper | None, est: Estimate, max_tokens: int, max_cost:
     return ""
 
 
-def estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool = True) -> Estimate:
+def wants_long_cache(calls: list[Call]) -> bool:
+    """Keep the paper ready for an hour, not 5 minutes, when it is re-read many times or the calls run long
+    (--council, --blindspot, --deepdive, referee and resubmission runs). Writing that copy costs more once,
+    so short runs keep the 5-minute one."""
+    readers = [c for c in calls if c.reads_paper]
+    return len(readers) >= 4 or any(c.out[0] >= FINDER_DEEP[0] for c in readers)
+
+
+def estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool = True,
+             long_cache: bool = False) -> Estimate:
     p = PRICES.get(model)
     if p is None:
         return Estimate(paper_tokens, calls, None, None, exact_count)
@@ -132,6 +141,9 @@ def estimate(paper_tokens: int, calls: list[Call], model: str, exact_count: bool
         # low: one cache write, then cheap cache reads.
         # high: the cache is written again after every call that may run past its 5 minutes.
         paper_low = paper_tokens * (p["cache_write"] + p["cache_read"] * (len(readers) - 1)) * per_m
+        if long_cache and "cache_write_1h" in p:  # written once, kept for an hour
+            paper_low = paper_high = paper_tokens * (p["cache_write_1h"] + p["cache_read"] * (len(readers) - 1)) * per_m
+            return Estimate(paper_tokens, calls, paper_low + task_in + out_low, paper_high + task_in + out_high, exact_count)
         if p.get("implicit_cache"):  # GPT / Gemini cache on their own, without a guarantee
             writes = len(readers)
         else:

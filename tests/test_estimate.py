@@ -95,8 +95,8 @@ def test_price_cap_refuses_expensive_runs(monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(cli, "make_backend", _fake_backend(300_000))
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
-    assert cli.main(["check", str(SAMPLE), "--yes", "--council", "--max-cost", "10"]) == 1
-    assert "above the $10 cap" in capsys.readouterr().err and calls == []
+    assert cli.main(["check", str(SAMPLE), "--yes", "--council", "--max-cost", "5"]) == 1
+    assert "above the $5 cap" in capsys.readouterr().err and calls == []
 
 
 def test_limits_apply_per_paper_not_to_a_batch_total(monkeypatch):
@@ -114,3 +114,27 @@ def test_size_split_names_figures():
     est = estimate.estimate(500_000, estimate.plan_check(Options()), "claude-opus-5-5")
     msg = estimate.limit_problem(paper, est, 400_000, 15)
     assert "40 figures" in msg and "removing some figures" in msg
+
+
+def test_long_runs_keep_the_paper_for_an_hour_and_cost_less_at_the_top():
+    base, council = estimate.plan_check(Options()), estimate.plan_check(Options(council=True))
+    assert not estimate.wants_long_cache(base) and estimate.wants_long_cache(council)
+    short = estimate.estimate(271_579, council, "claude-opus-5-5")
+    hour = estimate.estimate(271_579, council, "claude-opus-5-5", long_cache=True)
+    assert hour.high < short.high  # the paper is written once, not after every long call
+
+
+def test_one_hour_cache_writes_are_priced_separately():
+    from freereport.backends import Usage
+
+    class U:
+        input_tokens, output_tokens, cache_read_input_tokens = 100, 50, 0
+        cache_creation_input_tokens = 1_000_000
+
+        class cache_creation:
+            ephemeral_1h_input_tokens, ephemeral_5m_input_tokens = 1_000_000, 0
+
+    usage = Usage()
+    usage.add("adversary", U())
+    assert usage.cache_write == 0 and usage.cache_write_1h == 1_000_000
+    assert abs(usage.cost_usd("claude-opus-5-5") - (8.00 + 100 * 4e-6 + 50 * 20e-6)) < 1e-9

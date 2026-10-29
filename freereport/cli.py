@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from .backends import make_backend
+from .backends import make_backend, provider
 from . import estimate, prompts, referee, resubmit
 from .paper import Paper, load
 from .pipeline import Options, audit
@@ -40,6 +40,13 @@ def _paper_tokens(backend, paper: Paper, system: str) -> tuple[int, bool]:
         return backend.count_tokens(system), True
     except Exception:
         return estimate.rough_tokens(paper), False
+
+
+def _cost(backend, tokens: int, calls: list, model: str, exact: bool) -> "estimate.Estimate":
+    """Estimate, choosing how long the paper is kept ready: an hour when it is re-read many times."""
+    long_cache = estimate.wants_long_cache(calls) and provider(model) == "anthropic"
+    backend.cache_ttl = "1h" if long_cache else "5m"
+    return estimate.estimate(tokens, calls, model, exact, long_cache)
 
 
 def _go(est: "estimate.Estimate", args, paper: Paper | None = None, limits: bool = True) -> bool:
@@ -128,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             failures += 1
             continue
         tokens, exact = _paper_tokens(backend, paper, prompts.SYSTEM)
-        est = estimate.estimate(tokens, estimate.plan_check(opts), args.model, exact)
+        est = _cost(backend, tokens, estimate.plan_check(opts), args.model, exact)
         too_big = estimate.limit_problem(paper, est, args.max_tokens, args.max_cost)  # limits apply per paper
         if too_big:
             print(f"  {too_big}", file=sys.stderr)
@@ -173,7 +180,7 @@ def _respond(args) -> int:
         print(f"  {note}")
     backend = make_backend(paper, model=args.model, effort=args.effort)
     tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
-    if not _go(estimate.estimate(tokens, estimate.plan_respond(len(args.reviews)), args.model, exact), args, paper):
+    if not _go(_cost(backend, tokens, estimate.plan_respond(len(args.reviews)), args.model, exact), args, paper):
         return 0
     result = referee.respond(paper, args.reviews, backend)
 
@@ -218,7 +225,7 @@ def _resubmit(args, opts: Options) -> int:
     n_reports = len(args.reviews) or len({c["id"].split(".")[0] for c in _previous_comments(args.previous)})
     calls = estimate.plan_resubmit(opts, n_reports, bool(args.letter), args.quick, args.no_check,
                                    reuse_comments=bool(args.previous), changes_tokens=changes_tokens)
-    if not _go(estimate.estimate(tokens, calls, args.model, exact), args, revised):
+    if not _go(_cost(backend, tokens, calls, args.model, exact), args, revised):
         return 0
     args.out.mkdir(parents=True, exist_ok=True)
 
