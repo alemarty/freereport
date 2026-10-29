@@ -34,8 +34,9 @@ def test_tex_flattens_inputs_and_keeps_original_line_numbers(tmp_path):
     write_project(tmp_path)
     paper = load(tmp_path / "main.tex")
     numbered = paper.tex_numbered
-    assert "main.tex:4| Results: $N = 412$." in numbered
-    assert "sections/model.tex:2| \\begin{equation} (a+b)^2" in numbered
+    assert "2| \\begin{document}\n4| Results: $N = 412$." in numbered
+    assert "=== file: sections/model.tex ===\n1| \\section{Model}\n2| \\begin{equation} (a+b)^2" in numbered
+    assert numbered.count("=== file: main.tex ===") == 2  # main.tex resumes after the \input
     assert "private note" not in numbered and "trailing comment" not in numbered
     assert [f[0] for f in paper.figures] == ["figs/plot.png"]
     assert paper.pdf_path is None
@@ -115,3 +116,12 @@ def test_large_png_is_scaled_down(tmp_path):
     [(name, media, data)] = load(tmp_path / "main.tex").figures
     small = pymupdf.Pixmap(data)
     assert (name, media) == ("wide.png", "image/png") and max(small.width, small.height) == MAX_FIGURE_PIXELS
+
+
+def test_switched_off_blocks_are_not_sent_but_line_numbers_stay(tmp_path):
+    (tmp_path / "main.tex").write_text("\\documentclass{article}\n\\begin{comment}\nold draft\n\\end{comment}\n"
+                                       "\\iffalse older draft \\fi\n\\iffalse\nunused\n\\fi\nKept text.\n\\iffalse never closed\nlast line\n")
+    numbered = load(tmp_path / "main.tex").tex_numbered
+    assert "draft" not in numbered and "unused" not in numbered
+    assert "9| Kept text." in numbered
+    assert "10| \\iffalse never closed\n11| last line" in numbered  # an unclosed block is kept

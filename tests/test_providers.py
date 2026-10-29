@@ -62,7 +62,7 @@ def test_openai_request_and_usage(monkeypatch):
 
     content = sent["input"][0]["content"]
     assert content[0]["type"] == "input_file" and content[0]["file_data"].startswith("data:application/pdf;base64,")
-    assert "main.tex:3| x = 1" in content[1]["text"] and content[3]["type"] == "input_image"
+    assert "=== file: main.tex ===\n3| x = 1" in content[1]["text"] and content[3]["type"] == "input_image"
     assert content[-1]["text"] == "the task" and sent["instructions"] == "system prompt"
     assert sent["reasoning"]["effort"] == "max" and sent["text"]["format"]["schema"] == SCHEMA
     assert b.usage.calls[0] == {"agent": "adversary", "input": 200, "output": 50, "cache_write": 0, "cache_read": 800}
@@ -89,7 +89,7 @@ def test_gemini_request_and_usage(monkeypatch):
     parts = sent["contents"][0]["parts"]
     pdf = parts[0]["inlineData"]
     assert pdf.get("mimeType", pdf.get("mime_type")) == "application/pdf"
-    assert "main.tex:3| x = 1" in parts[1]["text"] and parts[-1]["text"] == "the task"
+    assert "=== file: main.tex ===\n3| x = 1" in parts[1]["text"] and parts[-1]["text"] == "the task"
     config = sent["generationConfig"]
     assert config["responseJsonSchema"] == SCHEMA
     thinking = config["thinkingConfig"]
@@ -114,3 +114,52 @@ def test_light_steps_think_at_medium_and_never_above_the_users_choice():
     assert backends.effort_for("adversary", "high") == "high"  # finding errors keeps the chosen level
     assert backends.effort_for("referee_assess_R1", "high") == "high"
     assert backends.effort_for("council_Methods Referee", "high") == "high"
+
+
+def test_overnight_sends_each_call_as_a_half_price_batch(monkeypatch):
+    import anthropic
+    import httpx2
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    sent, polls = {}, []
+    batch = {"id": "b1", "type": "message_batch", "created_at": "2026-10-29T00:00:00Z", "expires_at": "2026-10-30T00:00:00Z",
+             "request_counts": {"processing": 1, "succeeded": 0, "errored": 0, "canceled": 0, "expired": 0},
+             "cancel_initiated_at": None, "archived_at": None, "ended_at": None, "results_url": None}
+    ended = {**batch, "processing_status": "ended", "results_url": "https://api.anthropic.com/v1/messages/batches/b1/results"}
+    message = {"id": "m1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+               "content": [{"type": "text", "text": '{"ok": true}'}], "stop_reason": "end_turn", "stop_sequence": None,
+               "usage": {"input_tokens": 100, "output_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}
+
+    def server(request):
+        if request.method == "POST":
+            sent.update(json.loads(request.content))
+            return httpx2.Response(200, json={**batch, "processing_status": "in_progress"})
+        if request.url.path.endswith("/results"):
+            line = {"custom_id": "adversary", "result": {"type": "succeeded", "message": message}}
+            return httpx2.Response(200, content=(json.dumps(line) + "\n").encode())
+        polls.append(1)
+        return httpx2.Response(200, json=ended)
+
+    b = backends.make_backend(_paper(), "claude-opus-5-5")
+    b.client = anthropic.Anthropic(api_key="test", max_retries=0, http_client=httpx2.Client(transport=httpx2.MockTransport(server)))
+    b.overnight, b.poll_seconds, b.usage.discount = True, 0, 0.5
+    assert b.ask("adversary", "system prompt", "the task", SCHEMA) == {"ok": True}
+
+    params = sent["requests"][0]["params"]
+    assert sent["requests"][0]["custom_id"] == "adversary" and "fallbacks" not in params
+    assert params["messages"][0]["content"][-1]["text"] == "the task" and polls
+    assert b.usage.cost_usd("claude-opus-5-5") == pytest.approx((100 * 4 + 1000 * 20) / 1e6 / 2)
+
+
+def test_overnight_estimate_is_half_and_keeps_the_paper_for_an_hour():
+    calls = estimate.plan_check(Options())
+    day = estimate.estimate(272_000, calls, "claude-opus-5-5", long_cache=True)
+    night = estimate.estimate(272_000, calls, "claude-opus-5-5", long_cache=True, overnight=True)
+    assert night.high == pytest.approx(day.high / 2) and "overnight" in night.line()
+
+
+def test_overnight_is_refused_for_gpt_before_anything_runs(capsys):
+    from freereport import cli
+    with pytest.raises(SystemExit):
+        cli.main(["check", str(SAMPLE), "--model", "gpt-6.1-sol", "--overnight"])
+    assert "Claude models" in capsys.readouterr().err
