@@ -19,8 +19,9 @@ from .paper import Paper
 # implicit_cache: the provider caches the paper on its own, with no guarantee,
 # so the high end of the estimate assumes every call pays full price for it.
 PRICES = {
-    "claude-opus-5-5": {"input": 4.00, "output": 20.00, "cache_write": 5.00, "cache_read": 0.20},
-    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_write": 2.50, "cache_read": 0.20},
+    # cache_write keeps the paper ready for 5 minutes, cache_write_1h for an hour
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00, "cache_write": 5.00, "cache_write_1h": 8.00, "cache_read": 0.20},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_write": 2.50, "cache_write_1h": 4.00, "cache_read": 0.20},
     "gpt-6-astra": {"input": 10.00, "output": 50.00, "cache_write": 10.00, "cache_read": 1.00, "implicit_cache": True},
     "gpt-6.1-sol": {"input": 2.00, "output": 10.00, "cache_write": 2.00, "cache_read": 0.10, "implicit_cache": True},
     # Google doubles these from 1 December 2026 (to $4 / $20 / $0.20)
@@ -71,16 +72,22 @@ class Usage:
     input: int = 0
     output: int = 0
     cache_write: int = 0
+    cache_write_1h: int = 0
     cache_read: int = 0
     calls: list[dict] = field(default_factory=list)
 
     def add(self, label: str, u) -> None:
         """Add a Claude usage object."""
-        self.add_counts(label, u.input_tokens, u.output_tokens,
-                        u.cache_creation_input_tokens or 0, u.cache_read_input_tokens or 0)
+        written = u.cache_creation_input_tokens or 0
+        hour = getattr(getattr(u, "cache_creation", None), "ephemeral_1h_input_tokens", 0) or 0
+        self.add_counts(label, u.input_tokens, u.output_tokens, written - hour, u.cache_read_input_tokens or 0, hour)
 
-    def add_counts(self, label: str, input: int, output: int, cache_write: int = 0, cache_read: int = 0) -> None:
+    def add_counts(self, label: str, input: int, output: int, cache_write: int = 0, cache_read: int = 0,
+                   cache_write_1h: int = 0) -> None:
         row = {"agent": label, "input": input, "output": output, "cache_write": cache_write, "cache_read": cache_read}
+        if cache_write_1h:
+            row["cache_write_1h"] = cache_write_1h
+        self.cache_write_1h += cache_write_1h
         self.calls.append(row)
         self.input += row["input"]
         self.output += row["output"]
@@ -95,6 +102,7 @@ class Usage:
             self.input * p["input"]
             + self.output * p["output"]
             + self.cache_write * p["cache_write"]
+            + self.cache_write_1h * p.get("cache_write_1h", p["cache_write"])
             + self.cache_read * p["cache_read"]
         ) / 1_000_000
 
@@ -143,6 +151,7 @@ class ClaudeBackend:
                 "type": "image",
                 "source": {"type": "base64", "media_type": media_type, "data": base64.standard_b64encode(data).decode()},
             })
+        self.cache_ttl = "5m"  # "1h" for runs that re-read the paper many times (set by the cost estimate)
         if self._documents:  # nothing to cache in a light check that sends no manuscript
             self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
@@ -160,6 +169,8 @@ class ClaudeBackend:
             extra_body["fallbacks"] = "default"
             extra_headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
 
+        if self._documents:
+            self._documents[-1]["cache_control"] = {"type": "ephemeral", "ttl": self.cache_ttl}
         with self.client.messages.stream(
             model=self.model,
             max_tokens=64000,
