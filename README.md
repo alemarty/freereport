@@ -58,6 +58,22 @@ For each paper you get three files in `reports/`:
 - `my_paper.md`: the same report as plain text (Markdown).
 - `my_paper.json`: the same results as data, plus token usage and cost (used for testing in step 2).
 
+### Cost before you run
+
+Before spending anything, FreeReport measures your paper with the API's free token counter and shows a price range, then asks:
+
+```
+Estimated cost: $2.18 – 7.11  (paper 272k tokens · 3 AI calls)
+Continue? [y/N]
+```
+
+Nothing is spent unless you type `y`. The range is wide because the AI's thinking time varies; the size of the paper is exact. Every report shows the real cost at the end.
+
+- `--estimate`: only show the price, do not run.
+- `--yes` (or `-y`): skip the question, e.g. when checking many papers in a row.
+
+Works the same for `respond` and `resubmit`.
+
 Options:
 
 - `--model claude-sonnet-5-5`: cheaper model (about half the price).

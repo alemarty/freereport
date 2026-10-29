@@ -102,6 +102,13 @@ class ClaudeBackend:
         if self._documents:  # nothing to cache in a light check that sends no manuscript
             self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
+    def count_tokens(self, system: str, extra: str = "") -> int:
+        """Exact input size of the paper (plus `extra`), from the API's free token counter."""
+        content = [*self._documents, {"type": "text", "text": extra or "."}]
+        return self.client.messages.count_tokens(
+            model=self.model, system=system, messages=[{"role": "user", "content": content}]
+        ).input_tokens
+
     def ask(self, label: str, system: str, task: str, schema: dict) -> dict:
         extra_body, extra_headers = {}, {}
         if self.model.startswith(("claude-opus", "claude-fable", "claude-sonnet-5-5")):
