@@ -24,16 +24,32 @@ cd freereport
 pip install -e .
 ```
 
-## Set your Claude API key
+## Set your API key
 
-Get a key at https://console.anthropic.com (Settings → API keys), then:
+FreeReport works with **Claude** (Anthropic, the default), **GPT** (OpenAI) or **Gemini** (Google). You pay the company directly with your own API key (a password-like code linked to your account and its billing).
 
-```bash
-# macOS / Linux
-export ANTHROPIC_API_KEY="sk-ant-..."
-# Windows PowerShell
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-```
+| Company | Get a key | Set it (macOS / Linux) | Extra install |
+|---|---|---|---|
+| Claude (default) | https://console.anthropic.com → API keys | `export ANTHROPIC_API_KEY="sk-ant-..."` | none |
+| GPT | https://platform.openai.com → API keys | `export OPENAI_API_KEY="sk-..."` | `pip install -e ".[openai]"` |
+| Gemini | https://aistudio.google.com → Get API key | `export GEMINI_API_KEY="..."` | `pip install -e ".[gemini]"` |
+
+On Windows PowerShell use `$env:ANTHROPIC_API_KEY = "..."` (same for the others).
+
+### Choose the AI
+
+Pick the model with `--model`; the company is recognised from the name:
+
+| `--model` | Company | Price per million tokens (in / out) | Note |
+|---|---|---|---|
+| `claude-opus-5-5` (default) | Anthropic | $4 / $20 | What the prompts were tuned on. |
+| `claude-sonnet-5-5` | Anthropic | $2 / $10 | About half the price. |
+| `gpt-6.1-sol` | OpenAI | $2 / $10 | |
+| `gpt-6-astra` | OpenAI | $10 / $50 | OpenAI's top model; expensive. |
+| `gemini-4-argon` | Google | $2 / $10 | Google doubles this on 1 Dec 2026. |
+| `gemini-3.8-flash` | Google | $0.75 / $3.75 | Cheapest; good for a quick look. |
+
+All three read PDFs, LaTeX and `.zip` bundles, figures included. Prices are list prices from October 2026; each report shows the real cost. Other models from the same companies also work, but without a cost estimate.
 
 ## Run
 
@@ -88,7 +104,7 @@ Change them with `--max-tokens 600000` or `--max-cost 40`. When checking several
 
 Options:
 
-- `--model claude-sonnet-5-5`: cheaper model (about half the price).
+- `--model ...`: which AI to use (see [Choose the AI](#choose-the-ai)).
 - `--effort medium`: think less, cost less. Default is `high`.
 
 ### Modes

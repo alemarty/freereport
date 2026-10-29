@@ -13,6 +13,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+openai = ["openai>=3.40"]
+gemini = ["google-genai>=2.30"]
+all = ["openai>=3.40", "google-genai>=2.30"]
 
 [project.scripts]
 freereport = "freereport.cli:main"

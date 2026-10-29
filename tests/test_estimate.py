@@ -41,7 +41,7 @@ def test_answering_no_spends_nothing(monkeypatch, capsys):
         def count_tokens(self, system, extra=""):
             return 2_000
 
-    monkeypatch.setattr(cli, "ClaudeBackend", Fake)
+    monkeypatch.setattr(cli, "make_backend", Fake)
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
     assert cli.main(["check", str(SAMPLE)]) == 0
@@ -77,7 +77,7 @@ def _fake_backend(tokens):
 
 def test_too_large_paper_is_refused_before_any_call(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(cli, "ClaudeBackend", _fake_backend(500_000))
+    monkeypatch.setattr(cli, "make_backend", _fake_backend(500_000))
 
     def audit(*a, **k):  # record the paid run, then stop before writing reports
         calls.append(a)
@@ -93,7 +93,7 @@ def test_too_large_paper_is_refused_before_any_call(monkeypatch, capsys):
 
 def test_price_cap_refuses_expensive_runs(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(cli, "ClaudeBackend", _fake_backend(300_000))
+    monkeypatch.setattr(cli, "make_backend", _fake_backend(300_000))
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
     assert cli.main(["check", str(SAMPLE), "--yes", "--council", "--max-cost", "10"]) == 1
     assert "above the $10 cap" in capsys.readouterr().err and calls == []
@@ -101,7 +101,7 @@ def test_price_cap_refuses_expensive_runs(monkeypatch, capsys):
 
 def test_limits_apply_per_paper_not_to_a_batch_total(monkeypatch):
     calls = []
-    monkeypatch.setattr(cli, "ClaudeBackend", _fake_backend(300_000))
+    monkeypatch.setattr(cli, "make_backend", _fake_backend(300_000))
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
     cli.main(["check", str(SAMPLE), str(SAMPLE), "--yes", "--estimate"])  # 600k in total, but each is 300k
     assert calls == []  # --estimate: nothing runs, and no limit error either
