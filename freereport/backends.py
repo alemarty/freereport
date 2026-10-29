@@ -154,8 +154,6 @@ class ClaudeBackend:
                 "source": {"type": "base64", "media_type": media_type, "data": base64.standard_b64encode(data).decode()},
             })
         self.cache_ttl = "5m"  # "1h" for runs that re-read the paper many times (set by the cost estimate)
-        self.overnight = False  # True: send each call through the Batch API at half price; answers take minutes to hours
-        self.poll_seconds = 60
         if self._documents:  # nothing to cache in a light check that sends no manuscript
             self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
@@ -175,7 +173,7 @@ class ClaudeBackend:
 
         if self._documents:
             self._documents[-1]["cache_control"] = {"type": "ephemeral", "ttl": self.cache_ttl}
-        params = dict(
+        with self.client.messages.stream(
             model=self.model,
             max_tokens=64000,
             system=system,
