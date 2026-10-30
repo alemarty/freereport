@@ -150,7 +150,7 @@ def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
     except SystemExit:
         pass
     assert seen["opts"].deepdive and seen["opts"].council and not seen["opts"].blindspot
-    assert seen["effort"] == "max"
+    assert seen["effort"] == "xhigh"
 
 
 def test_resubmit_rejects_modes_with_no_check(capsys):

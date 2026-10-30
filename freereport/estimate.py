@@ -17,7 +17,7 @@ from .prompts import COUNCIL_ROLES
 
 # (low, high) output tokens per call, thinking included
 FINDER = (12_000, 55_000)
-FINDER_DEEP = (40_000, 100_000)
+FINDER_DEEP = (25_000, 80_000)  # per half: --deepdive checks the paper in two halves
 SYNTHESIS = (10_000, 40_000)
 BLINDSPOT = (10_000, 40_000)
 COUNCIL = (4_000, 12_000)
@@ -58,8 +58,10 @@ class Estimate:
 
 
 def plan_check(opts: Options) -> list[Call]:
-    finder = FINDER_DEEP if opts.deepdive else FINDER
-    calls = [Call("adversary", finder), Call("data_auditor", finder)]
+    if opts.deepdive:
+        calls = [Call(f"{agent}_part{i}", FINDER_DEEP) for agent in ("adversary", "data_auditor") for i in (1, 2)]
+    else:
+        calls = [Call("adversary", FINDER), Call("data_auditor", FINDER)]
     if opts.blindspot:
         calls += [Call("adversary_blindspot", BLINDSPOT), Call("data_auditor_blindspot", BLINDSPOT)]
     calls.append(Call("synthesis", SYNTHESIS))

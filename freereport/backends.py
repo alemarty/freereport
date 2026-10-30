@@ -196,7 +196,7 @@ class ClaudeBackend:
         if message.stop_reason == "refusal":
             raise RefusedError(f"{label}: model declined ({message.stop_details})")
         if message.stop_reason == "max_tokens":
-            raise RuntimeError(f"{label}: output was cut off at max_tokens")
+            raise RuntimeError(f"{label}: output was cut off at max_tokens ({message.usage.output_tokens:,} tokens)")
         text = next(b.text for b in message.content if b.type == "text")
         return json.loads(text)
 
