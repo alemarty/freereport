@@ -46,6 +46,7 @@ class AuditResult:
     options: Options = field(default_factory=Options)
     council: dict[str, CouncilView] = field(default_factory=dict)
     decision: CouncilDecision | None = None
+    title: str = ""  # the paper's own title, when the source has one
 
     def kept(self) -> list[tuple[Finding, Verdict]]:
         by_id = {f.id: f for f in self.candidates}
@@ -141,6 +142,7 @@ def audit(paper: Paper, backend: Backend, opts: Options | None = None, log=print
         synthesis=synthesis,
         quote_scores=quote_scores,
         options=opts,
+        title=paper.title,
     )
     if opts.council:
         result.council, result.decision = _council(backend, result.kept(), log, opts.journal)

@@ -40,6 +40,7 @@ def _quote_ok(result: AuditResult, f) -> bool:
 def _subtitle(result: AuditResult, usage: Usage, kept, merged, rejected) -> str:
     cost = usage.cost_usd(result.model)
     parts = [
+        f"FreeReport audit of {result.paper}" if result.title else "FreeReport audit",
         date.today().isoformat(),
         f"model {result.model}",
         f"{len(kept)} issue(s) reported",
@@ -51,10 +52,34 @@ def _subtitle(result: AuditResult, usage: Usage, kept, merged, rejected) -> str:
     return " · ".join(parts)
 
 
+def _name(result: AuditResult) -> str:
+    return result.title or result.paper
+
+
+def _council_note(result: AuditResult) -> str:
+    return (f"The combined view of {len(result.council)} reviewer roles on the paper as a whole. "
+            "Unlike the issues below, these are opinions, not verified errors.")
+
+
+def _notes_note(result: AuditResult) -> str:
+    return (f"Every point the {len(result.council)} reviewers raised, in one list by page. "
+            "The verdict and revision plan above already combine them.")
+
+
+def _notes(result: AuditResult) -> list:
+    """(role, point) for every council point, by page; whole-paper points (page 0) first."""
+    points = [(role, p) for role, view in result.council.items() for p in view.points]
+    return sorted(points, key=lambda rp: rp[1].page)
+
+
+def _page(point) -> str:
+    return f"p. {point.page} · " if point.page else ""
+
+
 def to_markdown(result: AuditResult, usage: Usage) -> str:
     kept, merged, rejected = _sections(result)
     lines = [
-        f"# FreeReport audit: {result.paper}",
+        f"# {_name(result)}",
         "",
         f"*{_subtitle(result, usage, kept, merged, rejected)}*",
         "",
@@ -65,9 +90,16 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
         "",
         result.synthesis.summary,
         "",
-        "## Issues",
-        "",
     ]
+    if result.decision:
+        d = result.decision
+        lines += ["## Verdict", "", f"> {_council_note(result)}", "", d.verdict, ""]
+        if d.journal_fit:
+            lines += [f"## Fit with {result.options.journal or 'the target journal'}", "", d.journal_fit, ""]
+        lines += ["## Revision plan", ""]
+        lines += [f"{n}. {s.step} *({s.why})*" for n, s in enumerate(d.action_plan, 1)]
+        lines.append("")
+    lines += ["## Issues", ""]
     if not kept:
         lines += ["No issues survived the final check.", ""]
     for n, (f, v) in enumerate(kept, 1):
@@ -87,6 +119,10 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
             f"*Final reviewer note:* {v.reason}",
             "",
         ]
+    if result.council:
+        lines += ["## Reviewer notes", "", f"> {_notes_note(result)}", ""]
+        lines += [f"- {_page(p)}*{role}:* {p.point}" for role, p in _notes(result)]
+        lines.append("")
     if merged:
         lines += ["## Merged duplicates", "", "Found by more than one checker; reported once above:", ""]
         lines += [f"- **{v.id}** → same as **{_same_as(v, kept)}**: {f.problem if f else ''}" for f, v in merged]
@@ -96,26 +132,6 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
         for f, v in rejected:
             lines.append(f"- **{v.id}** ({f.location if f else '?'}): {f.problem if f else ''} *Rejected because:* {v.reason}")
         lines.append("")
-    if result.decision:
-        lines += [
-            "## Council review",
-            "",
-            "> Opinions from six reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.",
-            "",
-            "### Executive verdict",
-            "",
-            result.decision.verdict,
-            "",
-            *([f"**Fit with {result.options.journal}:** {result.decision.journal_fit}", ""] if result.decision.journal_fit else []),
-            "**Revision plan:**",
-            "",
-        ]
-        lines += [f"{n}. {s.step} *({s.why})*" for n, s in enumerate(result.decision.action_plan, 1)]
-        lines.append("")
-        for role, view in result.council.items():
-            lines += [f"### {role}", ""]
-            lines += [f"- {p.point}" + (f" (p. {p.page})" if p.page else "") for p in view.points]
-            lines.append("")
     return "\n".join(lines)
 
 
@@ -138,7 +154,7 @@ p { margin: 3pt 0; }
 .quote { background-color: #f3f5f7; border-left: 3px solid #9aa9b6; padding: 4pt 6pt; margin: 4pt 0;
          font-family: monospace; font-size: 9pt; }
 .label { font-weight: bold; }
-li { margin: 2pt 0; }
+.item { margin: 2pt 0 2pt 10pt; }
 """
 
 
@@ -149,14 +165,21 @@ def _p(label: str, text: str) -> str:
 def to_html(result: AuditResult, usage: Usage) -> str:
     kept, merged, rejected = _sections(result)
     out = [
-        f"<h1>FreeReport audit: {escape(result.paper)}</h1>",
+        f"<h1>{escape(_name(result))}</h1>",
         f'<p class="sub">{escape(_subtitle(result, usage, kept, merged, rejected))}</p>',
         '<p class="note">Every issue cites where it is and quotes the paper so you can check it yourself. '
         "Treat them as leads to verify, not verdicts.</p>",
         "<h2>Summary</h2>",
         f"<p>{escape(result.synthesis.summary)}</p>",
-        "<h2>Issues</h2>",
     ]
+    if result.decision:
+        d = result.decision
+        out += ["<h2>Verdict</h2>", f'<p class="note">{escape(_council_note(result))}</p>', f"<p>{escape(d.verdict)}</p>"]
+        if d.journal_fit:
+            out += [f"<h2>Fit with {escape(result.options.journal or 'the target journal')}</h2>", f"<p>{escape(d.journal_fit)}</p>"]
+        out.append("<h2>Revision plan</h2>")
+        out += [f'<p class="item">{n}. {escape(s.step)} <i>({escape(s.why)})</i></p>' for n, s in enumerate(d.action_plan, 1)]
+    out.append("<h2>Issues</h2>")
     if not kept:
         out.append("<p>No issues survived the final check.</p>")
     for n, (f, v) in enumerate(kept, 1):
@@ -173,64 +196,66 @@ def to_html(result: AuditResult, usage: Usage) -> str:
             _p("Suggested fix:", f.suggested_fix),
             f'<p class="note">Final reviewer note: {escape(v.reason)}</p>',
         ]
+    if result.council:
+        out += ["<h2>Reviewer notes</h2>", f'<p class="note">{escape(_notes_note(result))}</p>']
+        out += [f'<p class="item">• {escape(_page(p))}<b>{escape(role)}:</b> {escape(p.point)}</p>' for role, p in _notes(result)]
     if merged:
-        out += ["<h2>Merged duplicates</h2>", '<p class="note">Found by more than one checker; reported once above.</p>', "<ul>"]
-        out += [f"<li><b>{escape(v.id)}</b> → same as <b>{escape(_same_as(v, kept))}</b>: {escape(f.problem if f else '')}</li>" for f, v in merged]
-        out.append("</ul>")
+        out += ["<h2>Merged duplicates</h2>", '<p class="note">Found by more than one checker; reported once above.</p>']
+        out += [f'<p class="item">• <b>{escape(v.id)}</b> → same as <b>{escape(_same_as(v, kept))}</b>: {escape(f.problem if f else "")}</p>'
+                for f, v in merged]
     if rejected:
-        out += ["<h2>Rejected candidates</h2>", '<p class="note">Raised by a checker, then rejected on re-checking.</p>', "<ul>"]
+        out += ["<h2>Rejected candidates</h2>", '<p class="note">Raised by a checker, then rejected on re-checking.</p>']
         out += [
-            f"<li><b>{escape(v.id)}</b> ({escape(f.location if f else '?')}): {escape(f.problem if f else '')} "
-            f"<i>Rejected because:</i> {escape(v.reason)}</li>"
+            f'<p class="item">• <b>{escape(v.id)}</b> ({escape(f.location if f else "?")}): {escape(f.problem if f else "")} '
+            f"<i>Rejected because:</i> {escape(v.reason)}</p>"
             for f, v in rejected
         ]
-        out.append("</ul>")
-    if result.decision:
-        out += [
-            "<h2>Council review</h2>",
-            '<p class="note">Opinions from six reviewer roles on the paper as a whole. Unlike the issues above, these are not verified errors.</p>',
-            "<h3>Executive verdict</h3>",
-            f"<p>{escape(result.decision.verdict)}</p>",
-            *([f'<p><span class="label">Fit with {escape(result.options.journal)}:</span> {escape(result.decision.journal_fit)}</p>']
-              if result.decision.journal_fit else []),
-            '<p class="label">Revision plan:</p>',
-            "<ol>",
-            *[f"<li>{escape(s.step)} <i>({escape(s.why)})</i></li>" for s in result.decision.action_plan],
-            "</ol>",
-        ]
-        for role, view in result.council.items():
-            out += [f"<h3>{escape(role)}</h3>", "<ul>"]
-            out += [f"<li>{escape(p.point)}" + (f" (p. {p.page})" if p.page else "") + "</li>" for p in view.points]
-            out.append("</ul>")
     return "<body>" + "\n".join(out) + "</body>"
 
 
-def to_pdf(result: AuditResult, usage: Usage, path: Path) -> None:
-    """Lay out the HTML report on A4 pages with page numbers."""
-    story = pymupdf.Story(html=to_html(result, usage), user_css=_CSS)
+def write_pdf(html: str, css: str, path: Path, footer: str) -> None:
+    """Lay out HTML on A4 pages with a footer and page numbers.
+
+    PyMuPDF's layout sometimes says a page is finished after running text past its
+    bottom edge, and that text is then lost (seen with long lists and on the last
+    page). A placed area taller than the page shows this, so lay out again with a
+    point less of page height until no page overflows.
+    """
     page = pymupdf.paper_rect("a4")
-    body = page + (54, 54, -54, -60)
-    writer = pymupdf.DocumentWriter(str(path))
-    more = True
-    while more:
-        device = writer.begin_page(page)
-        more, _ = story.place(body)
-        story.draw(device)
-        writer.end_page()
-    writer.close()
+    for shrink in range(8):
+        body = page + (54, 54, -54, -60 - shrink)
+        story = pymupdf.Story(html=html, user_css=css)
+        writer = pymupdf.DocumentWriter(str(path))
+        more, overflow = True, False
+        while more:
+            device = writer.begin_page(page)
+            more, filled = story.place(body)
+            overflow |= filled[3] > page.height - 30
+            story.draw(device)
+            writer.end_page()
+        writer.close()
+        if not overflow:
+            break
 
     # Footer with page numbers, added after layout so the total is known.
     with pymupdf.open(path) as doc:
         for i, pg in enumerate(doc, 1):
-            pg.insert_text((54, page.height - 30), f"FreeReport · {result.paper} · page {i} of {doc.page_count}",
+            pg.insert_text((54, page.height - 30), f"{footer} · page {i} of {doc.page_count}",
                            fontsize=8, color=(0.45, 0.45, 0.45))
         doc.saveIncr()
+
+
+def to_pdf(result: AuditResult, usage: Usage, path: Path) -> None:
+    """The audit report as a PDF. The HTML uses no <ul>/<ol>, which PyMuPDF can
+    lose at page breaks: list items are written as paragraphs."""
+    write_pdf(to_html(result, usage), _CSS, path, f"FreeReport · {_name(result)[:80]}")
 
 
 def to_json(result: AuditResult, usage: Usage) -> str:
     return json.dumps(
         {
             "paper": result.paper,
+            "title": result.title,
             "model": result.model,
             "candidates": [f.model_dump() for f in result.candidates],
             "verdicts": [v.model_dump() for v in result.synthesis.verdicts],

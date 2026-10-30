@@ -106,7 +106,10 @@ def test_optional_modes():
     assert sum(l.startswith("council_") for l in labels) == 6
     assert "M2" in [f.id for f in result.candidates]
     md = to_markdown(result, backend.usage)
-    assert "Council review" in md and "Fix Eq. 3" in md and "council_Outsider point" in md
+    assert "## Verdict" in md and "Fix Eq. 3" in md and "*Outsider:* council_Outsider point" in md
+    # The reviewers come as one list, not a section per role, and the verdict comes before the issues
+    assert "### Outsider" not in md and md.count("## Reviewer notes") == 1
+    assert md.index("## Verdict") < md.index("## Revision plan") < md.index("## Issues") < md.index("## Reviewer notes")
 
 
 def test_pdf_report(tmp_path):
@@ -115,8 +118,8 @@ def test_pdf_report(tmp_path):
     out = tmp_path / "report.pdf"
     to_pdf(result, backend.usage, out)
     text = "".join(p.get_text() for p in pymupdf.open(out))
-    assert "FreeReport audit: sample_paper.pdf" in text
-    assert "Missing 2ab term" in text and "Merged duplicates" in text and "Council review" in text
+    assert "sample_paper.pdf" in text and "FreeReport audit" in text
+    assert "Missing 2ab term" in text and "Merged duplicates" in text and "Verdict" in text and "Reviewer notes" in text
     assert "page 1 of" in text
 
 
@@ -134,7 +137,8 @@ def test_journal_reaches_every_council_member_and_the_report():
     council_tasks = [t for label, t in backend.tasks.items() if label.startswith("council_")]
     assert len(council_tasks) == 6 and all("Nature Communications" in t for t in council_tasks)
     md = to_markdown(result, backend.usage)
-    assert "**Fit with Nature Communications:** Good fit, shorten the intro." in md
+    assert "## Fit with Nature Communications\n\nGood fit, shorten the intro." in md
+    assert md.index("## Fit with") < md.index("## Issues")
 
 
 def test_journal_turns_on_the_council(monkeypatch):
@@ -144,3 +148,25 @@ def test_journal_turns_on_the_council(monkeypatch):
     monkeypatch.setattr(cli, "Options", lambda **kw: seen.update(kw) or Options(**kw))
     cli.main(["check", "x.pdf", "--journal", "Ecology Letters"])
     assert seen["council"] is True and seen["journal"] == "Ecology Letters"
+
+
+def test_pdf_is_laid_out_again_when_text_runs_off_a_page(tmp_path, monkeypatch):
+    """PyMuPDF can report a page done after running text past its bottom edge, and
+    that text is lost; the report must notice and lay the pages out again."""
+    from freereport import report
+    real, heights = pymupdf.Story, []
+
+    class Story(real):
+        def place(self, where):
+            more, filled = super().place(where)
+            heights.append(where[3])
+            if len(heights) == 1:  # first layout: pretend the text overflowed the page
+                filled = (filled[0], filled[1], filled[2], 1035.0)
+            return more, filled
+
+    monkeypatch.setattr(report.pymupdf, "Story", Story)
+    backend = FakeBackend()
+    result = audit(load(SAMPLE), backend, Options(), log=lambda *_: None)
+    to_pdf(result, backend.usage, tmp_path / "report.pdf")
+    assert len(heights) == 2 and heights[1] < heights[0]
+    assert "Missing 2ab term" in "".join(p.get_text() for p in pymupdf.open(tmp_path / "report.pdf"))
