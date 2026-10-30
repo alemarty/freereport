@@ -137,6 +137,9 @@ def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
         def __init__(self, paper, model, effort):
             pass
 
+        def count_tokens(self, system, extra=""):
+            return 2_000
+
     def fake_audit(paper, backend, opts):
         seen["opts"], seen["effort"] = opts, backend.effort
         raise SystemExit(0)  # stop here: only the options matter

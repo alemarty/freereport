@@ -38,10 +38,12 @@ def _add_cost(p: argparse.ArgumentParser) -> None:
 
 
 def _paper_tokens(backend, paper: Paper, system: str) -> tuple[int, bool]:
-    """Exact size from the free token counter; a rough offline guess if that fails (e.g. no network)."""
+    """Exact size from the free token counter. If that fails, a rough offline guess for the estimate;
+    a paid run then does not start (see _go), since the same key, model or network would fail mid-run."""
     try:
         return backend.count_tokens(system), True
-    except Exception:
+    except Exception as exc:
+        print(f"  Could not reach the AI service: {exc}", file=sys.stderr)
         return estimate.rough_tokens(paper), False
 
 
@@ -55,14 +57,37 @@ def _cost(backend, tokens: int, calls: list, model: str, exact: bool, overnight:
     return estimate.estimate(tokens, calls, model, exact, long_cache, overnight)
 
 
+def _preflight(est: "estimate.Estimate", args) -> str:
+    """Everything a paid run needs, checked before the first paid step so it cannot fail later for these
+    reasons; empty when all is ready. (Paper size, step length and the price cap: estimate.limit_problem.)"""
+    if not est.exact_count:
+        return ("The AI service did not answer the free size check (see the reason above), so a paid run would fail too. "
+                "Check the API key, the model name and the internet connection.")
+    try:  # the reports must be writable, or the answers would be paid for and then lost
+        args.out.mkdir(parents=True, exist_ok=True)
+        probe = args.out / ".freereport-write-check"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        return f"Cannot write the reports to {args.out}: {exc}."
+    return ""
+
+
 def _go(est: "estimate.Estimate", args, paper: Paper | None = None, limits: bool = True) -> bool:
     """True when the run should go ahead (checks the limits, prints the estimate first)."""
+    args.refused = False  # True when a check stops the run (a plain 'no' from the user is not an error)
     problem = estimate.limit_problem(paper, est, args.max_tokens, args.max_cost) if limits else ""
     if problem:
         print(problem, file=sys.stderr)
+        args.refused = True
         return False
     if args.estimate:
         print(est.line())
+        return False
+    stop = _preflight(est, args)
+    if stop:
+        print(f"{est.line()}\n  {stop} Nothing was spent.", file=sys.stderr)
+        args.refused = True
         return False
     if not estimate.confirm(est, args.yes):
         print("Stopped before any paid call. Nothing was spent.")
@@ -161,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
                               None if ready[0][3].low is None else sum(e.high for *_, e in ready),
                               all(e.exact_count for *_, e in ready))
     if not _go(total, args, limits=False):
-        return 1 if failures else 0
+        return 1 if failures or args.refused else 0
 
     args.out.mkdir(parents=True, exist_ok=True)
     for path, paper, backend, _ in ready:
@@ -191,7 +216,7 @@ def _respond(args) -> int:
     backend = make_backend(paper, model=args.model, effort=args.effort)
     tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
     if not _go(_cost(backend, tokens, estimate.plan_respond(len(args.reviews)), args.model, exact, args.overnight), args, paper):
-        return 0
+        return 1 if args.refused else 0
     args.out.mkdir(parents=True, exist_ok=True)
     saved = steps.keep(backend, paper, args.out)
     try:
@@ -243,7 +268,7 @@ def _resubmit(args, opts: Options) -> int:
     calls = estimate.plan_resubmit(opts, n_reports, bool(args.letter), args.quick, args.no_check,
                                    reuse_comments=bool(args.previous), changes_tokens=changes_tokens)
     if not _go(_cost(backend, tokens, calls, args.model, exact, args.overnight), args, revised):
-        return 0
+        return 1 if args.refused else 0
     args.out.mkdir(parents=True, exist_ok=True)
     saved = steps.keep(backend, revised, args.out)
     try:

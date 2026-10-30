@@ -49,3 +49,52 @@ def test_a_changed_paper_is_not_answered_from_an_old_run(tmp_path):
     assert f1 != f2
     b1.ask("adversary", "s", "t", {})
     assert steps.saved(f1) == 1 and steps.saved(f2) == 0
+
+
+def test_nothing_is_paid_when_the_ai_service_cannot_be_reached(monkeypatch, tmp_path, capsys):
+    asked = []
+
+    class Offline(FakeBackend):
+        effort = "high"
+
+        def __init__(self, paper, model, effort):
+            super().__init__()
+
+        def count_tokens(self, system, extra=""):
+            raise RuntimeError("invalid x-api-key")
+
+        def ask(self, *a):
+            asked.append(a)
+
+    monkeypatch.setattr(cli, "make_backend", Offline)
+    assert cli.main(["check", str(SAMPLE), "--yes", "--out", str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "invalid x-api-key" in err and "Nothing was spent" in err and asked == []
+
+
+def test_nothing_is_paid_when_the_reports_cannot_be_written(monkeypatch, tmp_path, capsys):
+    blocked = tmp_path / "file"
+    blocked.write_text("not a folder")
+
+    class Backend(FakeBackend):
+        effort = "high"
+
+        def __init__(self, paper, model, effort):
+            super().__init__()
+
+        def count_tokens(self, system, extra=""):
+            return 2_000
+
+    monkeypatch.setattr(cli, "make_backend", Backend)
+    assert cli.main(["check", str(SAMPLE), "--yes", "--out", str(blocked / "reports")]) == 1
+    assert "Cannot write the reports" in capsys.readouterr().err
+
+
+def test_every_planned_step_fits_in_one_answer():
+    from freereport import estimate
+    from freereport.backends import ANSWER_LIMIT
+    from freereport.pipeline import Options
+    every = Options(deepdive=True, blindspot=True, council=True)
+    plans = [estimate.plan_check(every), estimate.plan_respond(3),
+             estimate.plan_resubmit(every, 3, True, False, False, False, 20_000)]
+    assert all(c.out[1] <= ANSWER_LIMIT for plan in plans for c in plan)

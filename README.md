@@ -85,6 +85,14 @@ Continue? [y/N]
 
 Nothing is spent unless you type `y`. The range is wide because the AI's thinking time varies; the size of the paper is exact. Every report shows the real cost at the end.
 
+**Checked before anything is paid.** A run starts only when all of these pass:
+- the AI service answers the free size check, so the API key, the model name and the internet connection work;
+- the paper fits what the AI can read in one go, and is under the size and price limits;
+- every planned step fits in one answer;
+- the reports folder can be written to, so answers are never paid for and then lost.
+
+If any check fails, the run stops with the reason, and nothing is spent.
+
 **If a run stops halfway** (a step fails, the internet drops, the computer sleeps), every step that finished is kept in `reports/.freereport-steps/`. Run the same command again and it continues from there: finished steps are not paid for twice. The folder is removed once the report is written.
 
 - `--estimate`: only show the price, do not run.
