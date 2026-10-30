@@ -85,6 +85,8 @@ Continue? [y/N]
 
 Nothing is spent unless you type `y`. The range is wide because the AI's thinking time varies; the size of the paper is exact. Every report shows the real cost at the end.
 
+**If a run stops halfway** (a step fails, the internet drops, the computer sleeps), every step that finished is kept in `reports/.freereport-steps/`. Run the same command again and it continues from there: finished steps are not paid for twice. The folder is removed once the report is written.
+
 - `--estimate`: only show the price, do not run.
 - `--yes` (or `-y`): skip the question, e.g. when checking many papers in a row.
 - `--overnight`: **half price**. Each AI step waits in a queue and is answered within hours instead of minutes, so a full run can take most of a night. Start it in the evening, read the report in the morning. Claude models only for now.

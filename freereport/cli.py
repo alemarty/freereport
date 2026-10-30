@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from .backends import make_backend, provider
-from . import estimate, prompts, referee, resubmit
+from . import estimate, prompts, referee, resubmit, steps
 from .paper import Paper, load
 from .pipeline import Options, audit
 from .report import to_json, to_markdown, to_pdf
@@ -166,16 +166,18 @@ def main(argv: list[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     for path, paper, backend, _ in ready:
         print(f"\n== {path.name}")
+        saved = steps.keep(backend, paper, args.out)
         try:
             result = audit(paper, backend, opts)
         except Exception as exc:
-            print(f"  FAILED: {exc}", file=sys.stderr)
+            print(f"  FAILED: {exc}\n  {steps.stopped(saved)}", file=sys.stderr)
             failures += 1
             continue
         stem = args.out / _stem(path)
         stem.with_suffix(".md").write_text(to_markdown(result, backend.usage), encoding="utf-8")
         stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
         to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
+        steps.done(saved)
         cost = backend.usage.cost_usd(args.model)
         print(f"  {len(result.kept())} issue(s) · report: {stem.with_suffix('.pdf')}"
               + (f" · cost ≈ ${cost:.2f}" if cost is not None else ""))
@@ -190,13 +192,20 @@ def _respond(args) -> int:
     tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
     if not _go(_cost(backend, tokens, estimate.plan_respond(len(args.reviews)), args.model, exact, args.overnight), args, paper):
         return 0
-    result = referee.respond(paper, args.reviews, backend)
+    args.out.mkdir(parents=True, exist_ok=True)
+    saved = steps.keep(backend, paper, args.out)
+    try:
+        result = referee.respond(paper, args.reviews, backend)
+    except Exception as exc:
+        print(f"  FAILED: {exc}\n  {steps.stopped(saved)}", file=sys.stderr)
+        return 1
 
     args.out.mkdir(parents=True, exist_ok=True)
     stem = args.out / f"{_stem(args.paper)}_referee_response"
     stem.with_suffix(".md").write_text(referee.to_markdown(result, backend.usage), encoding="utf-8")
     stem.with_suffix(".json").write_text(referee.to_json(result, backend.usage), encoding="utf-8")
     referee.to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
+    steps.done(saved)
     print(f"  Journal response report: {stem.with_suffix('.pdf')}")
     if paper.pdf_path:
         marked = args.out / f"{_stem(args.paper)}_highlighted.pdf"
@@ -236,6 +245,15 @@ def _resubmit(args, opts: Options) -> int:
     if not _go(_cost(backend, tokens, calls, args.model, exact, args.overnight), args, revised):
         return 0
     args.out.mkdir(parents=True, exist_ok=True)
+    saved = steps.keep(backend, revised, args.out)
+    try:
+        return _resubmit_run(args, opts, original, revised, backend, stem, saved)
+    except Exception as exc:
+        print(f"  FAILED: {exc}\n  {steps.stopped(saved)}", file=sys.stderr)
+        return 1
+
+
+def _resubmit_run(args, opts: Options, original: Paper, revised: Paper, backend, stem: str, saved) -> int:
 
     check_summary = ""
     if not args.no_check and not args.quick:
@@ -261,6 +279,7 @@ def _resubmit(args, opts: Options) -> int:
     letter = args.out / f"{stem}_response_letter.md"
     letter.write_text(resubmit.letter(result), encoding="utf-8")
     letter.with_suffix(".tex").write_text(resubmit.latex_letter(result), encoding="utf-8")
+    steps.done(saved)
     print(f"  Resubmission report: {out.with_suffix('.pdf')}")
     print(f"  Draft response letter: {letter} and {letter.with_suffix('.tex').name} (LaTeX, e.g. for Overleaf)")
     if revised.pdf_path:
