@@ -163,3 +163,14 @@ def test_overnight_is_refused_for_gpt_before_anything_runs(capsys):
     with pytest.raises(SystemExit):
         cli.main(["check", str(SAMPLE), "--model", "gpt-6.1-sol", "--overnight"])
     assert "Claude models" in capsys.readouterr().err
+
+
+def test_every_step_name_is_accepted_by_the_batch_api():
+    import re
+    every = Options(deepdive=True, blindspot=True, council=True)
+    labels = [c.label for plan in (estimate.plan_check(every), estimate.plan_respond(3),
+                                   estimate.plan_resubmit(every, 3, True, False, False, False, 20_000)) for c in plan]
+    from freereport.prompts import COUNCIL_ROLES
+    labels += [f"council_{role}" for role in COUNCIL_ROLES]
+    assert "council_First Principles" in labels
+    assert all(re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", backends.batch_id(label)) for label in labels)

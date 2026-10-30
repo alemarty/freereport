@@ -8,6 +8,7 @@ the company is chosen from the model name. Each user brings their own key.
 import base64
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -208,7 +209,7 @@ class ClaudeBackend:
         """One call through the Batch API: half price, answered within 24 hours (usually under one)."""
         from anthropic.types.messages.batch_create_params import Request
 
-        batch = self.client.messages.batches.create(requests=[Request(custom_id=label, params=params)])
+        batch = self.client.messages.batches.create(requests=[Request(custom_id=batch_id(label), params=params)])
         while batch.processing_status != "ended":
             time.sleep(self.poll_seconds)
             batch = self.client.messages.batches.retrieve(batch.id)
@@ -217,6 +218,12 @@ class ClaudeBackend:
             detail = getattr(getattr(result, "error", None), "error", None) or result.type
             raise RuntimeError(f"{label}: overnight request did not finish ({detail})")
         return result.message
+
+
+def batch_id(label: str) -> str:
+    """A step name the Batch API accepts: letters, digits, _ and - only, at most 64 characters
+    (council roles have spaces, e.g. "council_First Principles")."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", label)[:64]
 
 
 def _need(module: str, extra: str):
