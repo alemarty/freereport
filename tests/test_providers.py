@@ -116,12 +116,12 @@ def test_light_steps_think_at_medium_and_never_above_the_users_choice():
     assert backends.effort_for("council_Methods Referee", "high") == "high"
 
 
-def test_overnight_sends_each_call_as_a_half_price_batch(monkeypatch):
+def _batch_backend(monkeypatch, sent, polls, drops=0):
+    """A Claude backend in overnight mode against a fake Batch API; the first `drops` status checks lose the connection."""
     import anthropic
     import httpx2
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
-    sent, polls = {}, []
     batch = {"id": "b1", "type": "message_batch", "created_at": "2026-10-29T00:00:00Z", "expires_at": "2026-10-30T00:00:00Z",
              "request_counts": {"processing": 1, "succeeded": 0, "errored": 0, "canceled": 0, "expired": 0},
              "cancel_initiated_at": None, "archived_at": None, "ended_at": None, "results_url": None}
@@ -137,18 +137,43 @@ def test_overnight_sends_each_call_as_a_half_price_batch(monkeypatch):
         if request.url.path.endswith("/results"):
             line = {"custom_id": "adversary", "result": {"type": "succeeded", "message": message}}
             return httpx2.Response(200, content=(json.dumps(line) + "\n").encode())
-        polls.append(1)
+        polls.append(request.url.path)
+        if len(polls) <= drops:
+            raise httpx2.ConnectError("internet dropped")
         return httpx2.Response(200, json=ended)
 
     b = backends.make_backend(_paper(), "claude-opus-5-5")
     b.client = anthropic.Anthropic(api_key="test", max_retries=0, http_client=httpx2.Client(transport=httpx2.MockTransport(server)))
     b.overnight, b.poll_seconds, b.usage.discount = True, 0, 0.5
+    return b
+
+
+def test_overnight_sends_each_call_as_a_half_price_batch(monkeypatch):
+    sent, polls = {}, []
+    b = _batch_backend(monkeypatch, sent, polls)
     assert b.ask("adversary", "system prompt", "the task", SCHEMA) == {"ok": True}
 
     params = sent["requests"][0]["params"]
     assert sent["requests"][0]["custom_id"] == "adversary" and "fallbacks" not in params
     assert params["messages"][0]["content"][-1]["text"] == "the task" and polls
     assert b.usage.cost_usd("claude-opus-5-5") == pytest.approx((100 * 4 + 1000 * 20) / 1e6 / 2)
+
+
+def test_overnight_keeps_waiting_through_internet_drops(monkeypatch):
+    sent, polls = {}, []
+    b = _batch_backend(monkeypatch, sent, polls, drops=3)
+    assert b.ask("adversary", "system prompt", "the task", SCHEMA) == {"ok": True}
+    assert len(polls) == 5  # three lost connections, then the status and the results (which reads the status again)
+
+
+def test_a_rerun_waits_for_the_request_already_queued_instead_of_paying_again(monkeypatch, tmp_path):
+    sent, polls = {}, []
+    b = _batch_backend(monkeypatch, sent, polls)
+    b.batch_ticket = tmp_path / "adversary.queued"
+    b.batch_ticket.write_text("b1")  # left by a run that stopped while waiting
+    assert b.ask("adversary", "system prompt", "the task", SCHEMA) == {"ok": True}
+    assert sent == {} and polls[0].endswith("/b1")  # nothing new was queued
+    assert not b.batch_ticket.exists()
 
 
 def test_overnight_estimate_is_half_and_keeps_the_paper_for_an_hour():

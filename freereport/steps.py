@@ -33,6 +33,8 @@ def keep(backend, paper: Paper, out: Path) -> Path:
     def saved_ask(label: str, system: str, task: str, schema: dict) -> dict:
         question = json.dumps([label, effort_for(label, getattr(backend, "effort", "")), system, task, schema], sort_keys=True)
         path = folder / f"{label}-{hashlib.sha256(question.encode()).hexdigest()[:16]}.json"
+        if hasattr(backend, "batch_ticket"):  # overnight: remember the queued request, so a rerun waits for it
+            backend.batch_ticket = path.with_suffix(".queued")
         if path.is_file():
             print(f"  {label}: using the answer saved by an earlier run (already paid)")
             return json.loads(path.read_text(encoding="utf-8"))

@@ -160,6 +160,7 @@ class ClaudeBackend:
         self.cache_ttl = "5m"  # "1h" for runs that re-read the paper many times (set by the cost estimate)
         self.overnight = False  # True: send each call through the Batch API at half price; answers take minutes to hours
         self.poll_seconds = 60
+        self.batch_ticket = None  # where the queued request's id is kept, set per step by steps.keep
         if self._documents:  # nothing to cache in a light check that sends no manuscript
             self._documents[-1]["cache_control"] = {"type": "ephemeral"}
 
@@ -209,11 +210,28 @@ class ClaudeBackend:
         """One call through the Batch API: half price, answered within 24 hours (usually under one)."""
         from anthropic.types.messages.batch_create_params import Request
 
-        batch = self.client.messages.batches.create(requests=[Request(custom_id=batch_id(label), params=params)])
-        while batch.processing_status != "ended":
+        # A request already in the queue (from a run that stopped while waiting) is picked up, not sent again.
+        ticket = self.batch_ticket
+        if ticket is not None and ticket.is_file():
+            batch_id_ = ticket.read_text(encoding="utf-8").strip()
+        else:
+            batch_id_ = self.client.messages.batches.create(requests=[Request(custom_id=batch_id(label), params=params)]).id
+            if ticket is not None:
+                ticket.parent.mkdir(parents=True, exist_ok=True)
+                ticket.write_text(batch_id_, encoding="utf-8")
+        status, result = "", None
+        while result is None:
+            try:  # the wait can last hours: an internet drop only means asking again later
+                if status != "ended":
+                    status = self.client.messages.batches.retrieve(batch_id_).processing_status
+                if status == "ended":
+                    result = next(iter(self.client.messages.batches.results(batch_id_))).result
+                    break
+            except (anthropic.APIConnectionError, anthropic.InternalServerError, anthropic.RateLimitError):
+                pass
             time.sleep(self.poll_seconds)
-            batch = self.client.messages.batches.retrieve(batch.id)
-        result = next(iter(self.client.messages.batches.results(batch.id))).result
+        if ticket is not None:
+            ticket.unlink(missing_ok=True)
         if result.type != "succeeded":
             detail = getattr(getattr(result, "error", None), "error", None) or result.type
             raise RuntimeError(f"{label}: overnight request did not finish ({detail})")

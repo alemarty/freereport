@@ -93,7 +93,7 @@ Nothing is spent unless you type `y`. The range is wide because the AI's thinkin
 
 If any check fails, the run stops with the reason, and nothing is spent.
 
-**If a run stops halfway** (a step fails, the internet drops, the computer sleeps), every step that finished is kept in `reports/.freereport-steps/`. Run the same command again and it continues from there: finished steps are not paid for twice. The folder is removed once the report is written.
+**If a run stops halfway** (a step fails, the internet drops for long, the computer sleeps), every step that finished is kept in `reports/.freereport-steps/`. Run the same command again and it continues from there: finished steps are not paid for twice. The folder is removed once the report is written. With `--overnight`, short internet drops while waiting are simply retried, and a step that was already in the queue when the run stopped is picked up again on the rerun, not sent (and paid for) a second time.
 
 - `--estimate`: only show the price, do not run.
 - `--yes` (or `-y`): skip the question, e.g. when checking many papers in a row.
