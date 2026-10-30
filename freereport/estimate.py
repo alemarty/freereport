@@ -10,14 +10,14 @@ expires after each long call, so the next call pays to read the paper again.
 
 from dataclasses import dataclass
 
-from .backends import PRICES
+from .backends import ANSWER_LIMIT, CONTEXT, PRICES
 from .paper import Paper
 from .pipeline import Options
 from .prompts import COUNCIL_ROLES
 
 # (low, high) output tokens per call, thinking included
 FINDER = (12_000, 55_000)
-FINDER_DEEP = (40_000, 100_000)
+FINDER_DEEP = (25_000, 80_000)  # per half: --deepdive checks the paper in two halves
 SYNTHESIS = (10_000, 40_000)
 BLINDSPOT = (10_000, 40_000)
 COUNCIL = (4_000, 12_000)
@@ -29,6 +29,7 @@ LETTER = (8_000, 25_000)
 TASK_TOKENS = 3_000  # instructions and earlier results added to each call
 MAX_TOKENS = 400_000  # default size limit: about 150 pages with figures
 MAX_COST = 25.0  # default price cap, in dollars, on the high end of the estimate
+LONG_TASK = 60_000  # the longest task text sent with the paper (e.g. all findings for the Synthesis Critic)
 LONG_CALL = 10_000  # output tokens after which the 5-minute cache has likely expired (seen on a real run)
 
 
@@ -58,8 +59,10 @@ class Estimate:
 
 
 def plan_check(opts: Options) -> list[Call]:
-    finder = FINDER_DEEP if opts.deepdive else FINDER
-    calls = [Call("adversary", finder), Call("data_auditor", finder)]
+    if opts.deepdive:
+        calls = [Call(f"{agent}_part{i}", FINDER_DEEP) for agent in ("adversary", "data_auditor") for i in (1, 2)]
+    else:
+        calls = [Call("adversary", FINDER), Call("data_auditor", FINDER)]
     if opts.blindspot:
         calls += [Call("adversary_blindspot", BLINDSPOT), Call("data_auditor_blindspot", BLINDSPOT)]
     calls.append(Call("synthesis", SYNTHESIS))
@@ -103,6 +106,12 @@ def size_parts(paper: Paper, paper_tokens: int) -> tuple[int, int]:
 
 def limit_problem(paper: Paper | None, est: Estimate, max_tokens: int, max_cost: float) -> str:
     """Why the run is refused before any paid call, with what to shrink; empty when it is within limits."""
+    too_long = [c.label for c in est.calls if c.out[1] > ANSWER_LIMIT]
+    if too_long:  # a step planned to answer at more length than allowed would fail after being paid
+        return f"Internal limit: step(s) {', '.join(too_long)} may need more than {ANSWER_LIMIT // 1000}k tokens. Nothing was spent."
+    if est.paper_tokens + ANSWER_LIMIT + LONG_TASK > CONTEXT:
+        return (f"Paper too large for the AI to read in one go: {est.paper_tokens / 1000:.0f}k tokens; the most is "
+                f"{(CONTEXT - ANSWER_LIMIT - LONG_TASK) / 1000:.0f}k. Remove the appendix or some figures. Nothing was spent.")
     if paper is not None and est.paper_tokens > max_tokens:
         text, figures = size_parts(paper, est.paper_tokens)
         pages = f" · {len(paper.pages)} pages" if paper.pages else ""

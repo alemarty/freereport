@@ -85,6 +85,16 @@ Continue? [y/N]
 
 Nothing is spent unless you type `y`. The range is wide because the AI's thinking time varies; the size of the paper is exact. Every report shows the real cost at the end.
 
+**Checked before anything is paid.** A run starts only when all of these pass:
+- the AI service answers the free size check, so the API key, the model name and the internet connection work;
+- the paper fits what the AI can read in one go, and is under the size and price limits;
+- every planned step fits in one answer;
+- the reports folder can be written to, so answers are never paid for and then lost.
+
+If any check fails, the run stops with the reason, and nothing is spent.
+
+**If a run stops halfway** (a step fails, the internet drops, the computer sleeps), every step that finished is kept in `reports/.freereport-steps/`. Run the same command again and it continues from there: finished steps are not paid for twice. The folder is removed once the report is written.
+
 - `--estimate`: only show the price, do not run.
 - `--yes` (or `-y`): skip the question, e.g. when checking many papers in a row.
 - `--overnight`: **half price**. Each AI step waits in a queue and is answered within hours instead of minutes, so a full run can take most of a night. Start it in the evening, read the report in the morning. Claude models only for now.
@@ -114,7 +124,7 @@ Every run starts with the **baseline**: the 3 core agents (Adversary, Data Audit
 
 | Flag | In one line | What it catches that the baseline may miss | Extra cost |
 |---|---|---|---|
-| `--deepdive` | **Read slower.** The same single pass, but exhaustive and at maximum effort: section by section, re-derive every step, check every table cell, appendices included. | Small errors a normal read skims past: a wrong sign in step 4 of a proof, one cell in Table 5 that does not add up. | slower, roughly 2-3x |
+| `--deepdive` | **Read slower.** Exhaustive, at extra-high effort, in two halves of the paper so each answer fits: section by section, re-derive every step, check every table cell, appendices included. | Small errors a normal read skims past: a wrong sign in step 4 of a proof, one cell in Table 5 that does not add up. | slower, roughly 2-3x |
 | `--blindspot` | **Look back at what was left out.** After the first pass, each agent re-reads its own list and asks "what did I miss?". | Gaps rather than typos: an assumption never stated, a theorem condition never checked ("Lemma 2 needs independence, but the paper never shows it holds"), a section skipped. | +2 calls |
 | `--council` | **Opinions on the paper as a whole**, from six roles: Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (jargon or notation unclear to a non-specialist), Methods Referee (identification and statistics: comparison groups, confounders, fixed effects, sample definitions, clustering, pre-trends, scaling local estimates up to totals; for any field that uses data), Executive (verdict and ordered revision plan). | Big-picture weaknesses no line-by-line check finds, including research-design problems. | +6 calls |
 | `--journal "Name"` | **Council tuned to a target journal**: it also judges fit with the journal's scope, the kind of contribution it publishes, and its tone and style, and the Executive writes a "Fit with ..." paragraph. Works for any field. Turns on `--council`. | Mismatch with the journal: too long, too technical for its readers, a contribution it rarely publishes. | same as `--council` |

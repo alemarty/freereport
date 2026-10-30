@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from .backends import make_backend, provider
-from . import estimate, prompts, referee, resubmit
+from . import estimate, prompts, referee, resubmit, steps
 from .paper import Paper, load
 from .pipeline import Options, audit
 from .report import to_json, to_markdown, to_pdf
@@ -38,10 +38,12 @@ def _add_cost(p: argparse.ArgumentParser) -> None:
 
 
 def _paper_tokens(backend, paper: Paper, system: str) -> tuple[int, bool]:
-    """Exact size from the free token counter; a rough offline guess if that fails (e.g. no network)."""
+    """Exact size from the free token counter. If that fails, a rough offline guess for the estimate;
+    a paid run then does not start (see _go), since the same key, model or network would fail mid-run."""
     try:
         return backend.count_tokens(system), True
-    except Exception:
+    except Exception as exc:
+        print(f"  Could not reach the AI service: {exc}", file=sys.stderr)
         return estimate.rough_tokens(paper), False
 
 
@@ -55,14 +57,37 @@ def _cost(backend, tokens: int, calls: list, model: str, exact: bool, overnight:
     return estimate.estimate(tokens, calls, model, exact, long_cache, overnight)
 
 
+def _preflight(est: "estimate.Estimate", args) -> str:
+    """Everything a paid run needs, checked before the first paid step so it cannot fail later for these
+    reasons; empty when all is ready. (Paper size, step length and the price cap: estimate.limit_problem.)"""
+    if not est.exact_count:
+        return ("The AI service did not answer the free size check (see the reason above), so a paid run would fail too. "
+                "Check the API key, the model name and the internet connection.")
+    try:  # the reports must be writable, or the answers would be paid for and then lost
+        args.out.mkdir(parents=True, exist_ok=True)
+        probe = args.out / ".freereport-write-check"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        return f"Cannot write the reports to {args.out}: {exc}."
+    return ""
+
+
 def _go(est: "estimate.Estimate", args, paper: Paper | None = None, limits: bool = True) -> bool:
     """True when the run should go ahead (checks the limits, prints the estimate first)."""
+    args.refused = False  # True when a check stops the run (a plain 'no' from the user is not an error)
     problem = estimate.limit_problem(paper, est, args.max_tokens, args.max_cost) if limits else ""
     if problem:
         print(problem, file=sys.stderr)
+        args.refused = True
         return False
     if args.estimate:
         print(est.line())
+        return False
+    stop = _preflight(est, args)
+    if stop:
+        print(f"{est.line()}\n  {stop} Nothing was spent.", file=sys.stderr)
+        args.refused = True
         return False
     if not estimate.confirm(est, args.yes):
         print("Stopped before any paid call. Nothing was spent.")
@@ -73,7 +98,7 @@ def _go(est: "estimate.Estimate", args, paper: Paper | None = None, limits: bool
 def _add_modes(p: argparse.ArgumentParser, quick_help: str = "Baseline only: the 3 core agents, no extra modes (the cheapest run; same as giving no mode).") -> None:
     """Options for the error check, shared by 'check' and 'resubmit'."""
     p.add_argument("--quick", action="store_true", help=quick_help)
-    p.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking (uses maximum effort).")
+    p.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking: each checker goes through the paper in two halves, at extra-high effort.")
     p.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
     p.add_argument("--council", action="store_true", help="Add a 6-role opinion review of the whole paper, including a methods (identification and statistics) referee.")
     p.add_argument("--journal", default="", help='Target journal, e.g. --journal "Nature Communications": the council also judges fit, tone and style for it (turns on --council).')
@@ -128,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_check and (opts.deepdive or opts.blindspot or opts.council):
             parser.error("--deepdive, --blindspot, --council and --journal change the error check: leave out --no-check to use them")
         return _resubmit(args, opts)
-    effort = "max" if args.deepdive else args.effort
+    effort = "xhigh" if args.deepdive else args.effort  # "max" can think past the longest answer allowed
 
     failures, ready = 0, []
     for path in args.papers:
@@ -161,21 +186,23 @@ def main(argv: list[str] | None = None) -> int:
                               None if ready[0][3].low is None else sum(e.high for *_, e in ready),
                               all(e.exact_count for *_, e in ready))
     if not _go(total, args, limits=False):
-        return 1 if failures else 0
+        return 1 if failures or args.refused else 0
 
     args.out.mkdir(parents=True, exist_ok=True)
     for path, paper, backend, _ in ready:
         print(f"\n== {path.name}")
+        saved = steps.keep(backend, paper, args.out)
         try:
             result = audit(paper, backend, opts)
         except Exception as exc:
-            print(f"  FAILED: {exc}", file=sys.stderr)
+            print(f"  FAILED: {exc}\n  {steps.stopped(saved)}", file=sys.stderr)
             failures += 1
             continue
         stem = args.out / _stem(path)
         stem.with_suffix(".md").write_text(to_markdown(result, backend.usage), encoding="utf-8")
         stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
         to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
+        steps.done(saved)
         cost = backend.usage.cost_usd(args.model)
         print(f"  {len(result.kept())} issue(s) · report: {stem.with_suffix('.pdf')}"
               + (f" · cost ≈ ${cost:.2f}" if cost is not None else ""))
@@ -189,14 +216,21 @@ def _respond(args) -> int:
     backend = make_backend(paper, model=args.model, effort=args.effort)
     tokens, exact = _paper_tokens(backend, paper, prompts.REFEREE_SYSTEM)
     if not _go(_cost(backend, tokens, estimate.plan_respond(len(args.reviews)), args.model, exact, args.overnight), args, paper):
-        return 0
-    result = referee.respond(paper, args.reviews, backend)
+        return 1 if args.refused else 0
+    args.out.mkdir(parents=True, exist_ok=True)
+    saved = steps.keep(backend, paper, args.out)
+    try:
+        result = referee.respond(paper, args.reviews, backend)
+    except Exception as exc:
+        print(f"  FAILED: {exc}\n  {steps.stopped(saved)}", file=sys.stderr)
+        return 1
 
     args.out.mkdir(parents=True, exist_ok=True)
     stem = args.out / f"{_stem(args.paper)}_referee_response"
     stem.with_suffix(".md").write_text(referee.to_markdown(result, backend.usage), encoding="utf-8")
     stem.with_suffix(".json").write_text(referee.to_json(result, backend.usage), encoding="utf-8")
     referee.to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
+    steps.done(saved)
     print(f"  Journal response report: {stem.with_suffix('.pdf')}")
     if paper.pdf_path:
         marked = args.out / f"{_stem(args.paper)}_highlighted.pdf"
@@ -234,14 +268,23 @@ def _resubmit(args, opts: Options) -> int:
     calls = estimate.plan_resubmit(opts, n_reports, bool(args.letter), args.quick, args.no_check,
                                    reuse_comments=bool(args.previous), changes_tokens=changes_tokens)
     if not _go(_cost(backend, tokens, calls, args.model, exact, args.overnight), args, revised):
-        return 0
+        return 1 if args.refused else 0
     args.out.mkdir(parents=True, exist_ok=True)
+    saved = steps.keep(backend, revised, args.out)
+    try:
+        return _resubmit_run(args, opts, original, revised, backend, stem, saved)
+    except Exception as exc:
+        print(f"  FAILED: {exc}\n  {steps.stopped(saved)}", file=sys.stderr)
+        return 1
+
+
+def _resubmit_run(args, opts: Options, original: Paper, revised: Paper, backend, stem: str, saved) -> int:
 
     check_summary = ""
     if not args.no_check and not args.quick:
         print("Error check of the revised paper (edits often add new mistakes)...")
-        if opts.deepdive:  # maximum effort for the error check only, not the comment-by-comment check
-            backend.effort = "max"
+        if opts.deepdive:  # extra-high effort for the error check only, not the comment-by-comment check
+            backend.effort = "xhigh"
         audit_result = audit(revised, backend, opts)
         backend.effort = args.effort
         report = args.out / stem
@@ -261,6 +304,7 @@ def _resubmit(args, opts: Options) -> int:
     letter = args.out / f"{stem}_response_letter.md"
     letter.write_text(resubmit.letter(result), encoding="utf-8")
     letter.with_suffix(".tex").write_text(resubmit.latex_letter(result), encoding="utf-8")
+    steps.done(saved)
     print(f"  Resubmission report: {out.with_suffix('.pdf')}")
     print(f"  Draft response letter: {letter} and {letter.with_suffix('.tex').name} (LaTeX, e.g. for Overleaf)")
     if revised.pdf_path:

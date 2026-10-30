@@ -30,6 +30,9 @@ PRICES = {
     "gemini-3.8-flash": {"input": 0.75, "output": 3.75, "cache_write": 0.75, "cache_read": 0.075, "implicit_cache": True},
 }
 
+ANSWER_LIMIT = 128_000  # the longest answer (thinking included) one step may give: Claude's maximum
+CONTEXT = 1_000_000  # the most the model can read in one step: the paper, the task and the answer together
+
 KEYS = {"anthropic": ["ANTHROPIC_API_KEY"], "openai": ["OPENAI_API_KEY"], "google": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]}
 
 
@@ -177,7 +180,7 @@ class ClaudeBackend:
             self._documents[-1]["cache_control"] = {"type": "ephemeral", "ttl": self.cache_ttl}
         params = dict(
             model=self.model,
-            max_tokens=128_000,  # the model's most; deep checks at high effort can think past 64k
+            max_tokens=ANSWER_LIMIT,
             system=system,
             output_config={"effort": effort_for(label, self.effort), "format": {"type": "json_schema", "schema": schema}},
             messages=[{
@@ -196,7 +199,7 @@ class ClaudeBackend:
         if message.stop_reason == "refusal":
             raise RefusedError(f"{label}: model declined ({message.stop_details})")
         if message.stop_reason == "max_tokens":
-            raise RuntimeError(f"{label}: output was cut off at max_tokens")
+            raise RuntimeError(f"{label}: output was cut off at max_tokens ({message.usage.output_tokens:,} tokens)")
         text = next(b.text for b in message.content if b.type == "text")
         return json.loads(text)
 

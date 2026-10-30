@@ -52,11 +52,37 @@ class AuditResult:
         return [(by_id[v.id], v) for v in self.synthesis.verdicts if v.keep and v.id in by_id]
 
 
-def _find(backend: Backend, label: str, task: str, opts: Options, log) -> list[Finding]:
+def _halves(paper: Paper) -> list[str]:
+    """The paper cut in two, as instructions naming each half, so a deep check fits in one answer.
+    Empty when the paper cannot be cut (one page, or no text)."""
+    numbered = [(f, n) for f, n, text in paper.tex_lines if text.strip()]
+    if len(numbered) >= 2:
+        f, n = numbered[len(numbered) // 2]
+        return [f"\n\nPART 1 OF 2: check only the LaTeX source from its start up to, but not including, {f}:{n}.",
+                f"\n\nPART 2 OF 2: check only the LaTeX source from {f}:{n} to the end, including all appendices."]
+    if len(paper.pages) >= 2:
+        k = len(paper.pages) // 2
+        return [f"\n\nPART 1 OF 2: check only PDF pages 1 to {k}.",
+                f"\n\nPART 2 OF 2: check only PDF pages {k + 1} to {len(paper.pages)}, including all appendices."]
+    return []
+
+
+def _find(backend: Backend, paper: Paper, label: str, task: str, opts: Options, log) -> list[Finding]:
     schema = strict_schema(FindingList)
     if opts.deepdive:
         task += prompts.DEEPDIVE
-    found = FindingList.model_validate(backend.ask(label, prompts.SYSTEM, task, schema)).findings
+    parts = _halves(paper) if opts.deepdive else []
+    if parts:  # a deep check of a whole paper can think past the longest answer allowed: do it in two halves
+        found = []
+        for i, part in enumerate(parts, 1):
+            more = FindingList.model_validate(backend.ask(f"{label}_part{i}", prompts.SYSTEM, task + part, schema)).findings
+            seen = {f.id for f in found}
+            for f in more:
+                if f.id in seen:  # both halves numbered from 1
+                    f.id += "b"
+            found += more
+    else:
+        found = FindingList.model_validate(backend.ask(label, prompts.SYSTEM, task, schema)).findings
     log(f"  {len(found)} candidate(s)")
     if opts.blindspot:
         draft = json.dumps([f.model_dump() for f in found], indent=1)
@@ -94,9 +120,9 @@ def audit(paper: Paper, backend: Backend, opts: Options | None = None, log=print
     opts = opts or Options()
 
     log("Agent 1 (Academic Adversary): checking equations and proofs...")
-    math = _find(backend, "adversary", prompts.ADVERSARY, opts, log)
+    math = _find(backend, paper, "adversary", prompts.ADVERSARY, opts, log)
     log("Agent 2 (Data Auditor): checking numbers against tables...")
-    data = _find(backend, "data_auditor", prompts.DATA_AUDITOR, opts, log)
+    data = _find(backend, paper, "data_auditor", prompts.DATA_AUDITOR, opts, log)
 
     candidates = math + data
     quote_scores = {f.id: quote_match(f.quote, paper.pages, f.page, paper.tex_text) for f in candidates}

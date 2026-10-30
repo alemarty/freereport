@@ -36,6 +36,10 @@ class FakeBackend:
     def ask(self, label, system, task, schema):
         self.usage.add(label, FakeUsage())
         self.tasks[label] = task
+        label = label.removesuffix("_part1")  # --deepdive checks in two halves; the second finds nothing new
+        if label.endswith("_part2"):
+            return {"findings": [finding("M1", "math", "(a + b)^2 = a^2 + b^2", "Same id from the other half")]
+                    if label.startswith("adversary") else []}
         if label == "adversary":
             return {"findings": [finding("M1", "math", "(a + b)^2 = a^2 + b^2", "Missing 2ab term")]}
         if label == "adversary_blindspot":
@@ -92,8 +96,12 @@ def test_strict_schema_requires_every_field():
 
 def test_optional_modes():
     backend = FakeBackend()
-    result = audit(load(SAMPLE), backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
+    paper = load(SAMPLE)
+    paper.pages = paper.pages * 2  # two pages, so --deepdive can check it in two halves
+    result = audit(paper, backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
     labels = [c["agent"] for c in backend.usage.calls]
+    assert labels[:2] == ["adversary_part1", "adversary_part2"] and "adversary" not in labels
+    assert "PART 2 OF 2" in backend.tasks["adversary_part2"] and "M1b" in [f.id for f in result.candidates]
     assert labels.count("adversary_blindspot") == 1
     assert sum(l.startswith("council_") for l in labels) == 6
     assert "M2" in [f.id for f in result.candidates]
