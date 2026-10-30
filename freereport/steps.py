@@ -6,7 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
-from .backends import effort_for
+from .backends import Usage, effort_for
 from .paper import Paper
 
 FOLDER = ".freereport-steps"
@@ -29,6 +29,7 @@ def keep(backend, paper: Paper, out: Path) -> Path:
     ask = getattr(backend, "ask", None)
     if ask is None:  # nothing to save
         return folder
+    backend.earlier = Usage()  # what the reused steps cost when an earlier run paid for them
 
     def saved_ask(label: str, system: str, task: str, schema: dict) -> dict:
         question = json.dumps([label, effort_for(label, getattr(backend, "effort", "")), system, task, schema], sort_keys=True)
@@ -37,14 +38,32 @@ def keep(backend, paper: Paper, out: Path) -> Path:
             backend.batch_ticket = path.with_suffix(".queued")
         if path.is_file():
             print(f"  {label}: using the answer saved by an earlier run (already paid)")
-            return json.loads(path.read_text(encoding="utf-8"))
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            if set(saved) != {"answer", "usage"}:  # saved by a version that kept the answer only
+                saved = {"answer": saved, "usage": []}
+            for row in saved.get("usage", []):
+                backend.earlier.add_counts(row["agent"], row["input"], row["output"], row["cache_write"],
+                                           row["cache_read"], row.get("cache_write_1h", 0))
+            return saved["answer"]
+        usage = getattr(backend, "usage", None)
+        before = len(usage.calls) if usage else 0
         answer = ask(label, system, task, schema)
         folder.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(answer), encoding="utf-8")
+        rows = usage.calls[before:] if usage else []
+        path.write_text(json.dumps({"answer": answer, "usage": rows}), encoding="utf-8")
         return answer
 
     backend.ask = saved_ask
     return folder
+
+
+def earlier_cost(backend, model: str) -> float:
+    """What the steps reused from earlier runs cost then (0 when none were reused)."""
+    earlier = getattr(backend, "earlier", None)
+    if not earlier or not earlier.calls:
+        return 0.0
+    earlier.discount = backend.usage.discount
+    return earlier.cost_usd(model) or 0.0
 
 
 def saved(folder: Path) -> int:

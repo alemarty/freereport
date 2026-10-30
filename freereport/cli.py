@@ -73,6 +73,18 @@ def _preflight(est: "estimate.Estimate", args) -> str:
     return ""
 
 
+def _cost_line(backend, model: str) -> str:
+    """The real cost, counting the steps reused from earlier runs of the same check."""
+    now = backend.usage.cost_usd(model) if backend.usage else None
+    if now is None:
+        return ""
+    earlier = steps.earlier_cost(backend, model)
+    if earlier:
+        return (f"\n  Cost: ${now + earlier:.2f} in total = ${now:.2f} this run"
+                f" + ${earlier:.2f} paid by earlier runs for the steps reused")
+    return f"\n  Cost: ${now:.2f}"
+
+
 def _go(est: "estimate.Estimate", args, paper: Paper | None = None, limits: bool = True) -> bool:
     """True when the run should go ahead (checks the limits, prints the estimate first)."""
     args.refused = False  # True when a check stops the run (a plain 'no' from the user is not an error)
@@ -203,9 +215,9 @@ def main(argv: list[str] | None = None) -> int:
         stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
         to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
         steps.done(saved)
-        cost = backend.usage.cost_usd(args.model)
-        print(f"  {len(result.kept())} issue(s) · report: {stem.with_suffix('.pdf')}"
-              + (f" · cost ≈ ${cost:.2f}" if cost is not None else ""))
+        print(f"\nDONE. {len(result.kept())} issue(s) found.\n"
+              f"  Report: {stem.with_suffix('.pdf')}  (also {stem.with_suffix('.md').name} and {stem.with_suffix('.json').name})"
+              + _cost_line(backend, args.model))
     return 1 if failures else 0
 
 
@@ -231,14 +243,12 @@ def _respond(args) -> int:
     stem.with_suffix(".json").write_text(referee.to_json(result, backend.usage), encoding="utf-8")
     referee.to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
     steps.done(saved)
-    print(f"  Journal response report: {stem.with_suffix('.pdf')}")
+    print(f"\nDONE.\n  Journal response report: {stem.with_suffix('.pdf')}")
     if paper.pdf_path:
         marked = args.out / f"{_stem(args.paper)}_highlighted.pdf"
         placed = referee.highlight_pdf(result, paper.pdf_path, marked)
         print(f"  Highlighted paper: {marked} ({placed} of {len(result.assessments)} comments placed on the text)")
-    cost = backend.usage.cost_usd(args.model)
-    if cost is not None:
-        print(f"  cost ≈ ${cost:.2f}")
+    print(_cost_line(backend, args.model).lstrip("\n"))
     return 0
 
 
@@ -305,7 +315,7 @@ def _resubmit_run(args, opts: Options, original: Paper, revised: Paper, backend,
     letter.write_text(resubmit.letter(result), encoding="utf-8")
     letter.with_suffix(".tex").write_text(resubmit.latex_letter(result), encoding="utf-8")
     steps.done(saved)
-    print(f"  Resubmission report: {out.with_suffix('.pdf')}")
+    print(f"\nDONE.\n  Resubmission report: {out.with_suffix('.pdf')}")
     print(f"  Draft response letter: {letter} and {letter.with_suffix('.tex').name} (LaTeX, e.g. for Overleaf)")
     if revised.pdf_path:
         marked = args.out / f"{stem}_status_highlighted.pdf"
@@ -317,9 +327,7 @@ def _resubmit_run(args, opts: Options, original: Paper, revised: Paper, backend,
               f"{len(result.letter_check.unanswered)} comment(s) not answered")
     counts = result.counts()
     print("  " + ", ".join(f"{n} {resubmit.STATUS_LABEL[s].lower()}" for s, n in counts.items()))
-    cost = backend.usage.cost_usd(args.model)
-    if cost is not None:
-        print(f"  cost ≈ ${cost:.2f}")
+    print(_cost_line(backend, args.model).lstrip("\n"))
     return 0
 
 
