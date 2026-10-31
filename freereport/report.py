@@ -23,12 +23,6 @@ def _sections(result: AuditResult):
     return kept, merged, rejected
 
 
-def _same_as(v, kept) -> str:
-    """'issue 2' when the duplicate's twin is in the report, else the raw id."""
-    number = {f.id: n for n, (f, _) in enumerate(kept, 1)}
-    return f"issue {number[v.duplicate_of]}" if v.duplicate_of in number else v.duplicate_of
-
-
 def _where(f) -> list[str]:
     return [x for x in (f"page {f.page}" if f.page else "", f.source_line, f.location) if x]
 
@@ -44,7 +38,7 @@ def _subtitle(result: AuditResult, usage: Usage, kept, merged, rejected) -> str:
         date.today().isoformat(),
         f"model {result.model}",
         f"{len(kept)} issue(s) reported",
-        f"{len(merged)} duplicate(s) merged",
+        f"{len(merged)} repeat(s) merged into them",
         f"{len(rejected)} candidate(s) rejected",
     ]
     if cost is not None:
@@ -57,27 +51,53 @@ def _name(result: AuditResult) -> str:
 
 
 def _council_note(result: AuditResult) -> str:
-    return (f"The combined view of {len(result.council)} reviewer roles on the paper as a whole. "
+    return (f"One joint report from the {len(result.council)}-member council and its chair. "
             "Unlike the issues below, these are opinions, not verified errors.")
 
 
-def _notes_note(result: AuditResult) -> str:
-    return (f"Every point the {len(result.council)} reviewers raised, in one list by page. "
-            "The verdict and revision plan above already combine them.")
+_LEFT_OUT = ("Each reviewer's own notes, the candidates rejected on re-checking and the final checker's "
+             "notes are in the .json file.")
 
 
-def _notes(result: AuditResult) -> list:
-    """(role, point) for every council point, by page; whole-paper points (page 0) first."""
-    points = [(role, p) for role, view in result.council.items() for p in view.points]
-    return sorted(points, key=lambda rp: rp[1].page)
+def _numbers(kept, merged) -> dict[str, int]:
+    """Issue number for each finding id, duplicates included (they point at their kept twin)."""
+    number = {f.id: n for n, (f, _) in enumerate(kept, 1)}
+    for _, v in merged:
+        if v.duplicate_of in number:
+            number[v.id] = number[v.duplicate_of]
+    return number
 
 
-def _page(point) -> str:
-    return f"p. {point.page} · " if point.page else ""
+def _refs(ids: list[str], number: dict[str, int]) -> str:
+    """' (issues 3, 7)' for the ids that are in the report, else ''."""
+    found = sorted({number[i] for i in ids if i in number})
+    if not found:
+        return ""
+    return f" (issue{'s' if len(found) > 1 else ''} {', '.join(map(str, found))})"
+
+
+def _also_at(f, merged) -> str:
+    """Where else the same problem was found: 'page 21; page 27, Table 3'."""
+    places = [", ".join(_where(d)) for d, v in merged if d and v.duplicate_of == f.id]
+    return "; ".join(p for p in places if p)
+
+
+def _council_parts(result: AuditResult, number) -> list[tuple[str, list[str]]]:
+    """The council report as (heading, items) pairs, in reading order."""
+    d = result.decision
+    item = lambda c: f"{c.point}{_refs(c.issues, number)} — {c.support}" if c.support else f"{c.point}{_refs(c.issues, number)}"
+    parts = [("Main concerns", [item(c) for c in d.main_concerns])]
+    if d.disagreements:
+        parts.append(("Where the reviewers disagreed", [item(c) for c in d.disagreements]))
+    if d.side_notes:
+        parts.append(("Raised, but not a main concern", [item(c) for c in d.side_notes]))
+    parts.append(("Revision plan", [f"{s.step}{_refs(s.issues, number)}" for s in d.action_plan]))
+    return parts
 
 
 def to_markdown(result: AuditResult, usage: Usage) -> str:
     kept, merged, rejected = _sections(result)
+    number = _numbers(kept, merged)
     lines = [
         f"# {_name(result)}",
         "",
@@ -93,45 +113,35 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
     ]
     if result.decision:
         d = result.decision
-        lines += ["## Verdict", "", f"> {_council_note(result)}", "", d.verdict, ""]
+        lines += ["## Council verdict", "", f"> {_council_note(result)}", "", d.verdict, ""]
         if d.journal_fit:
             lines += [f"## Fit with {result.options.journal or 'the target journal'}", "", d.journal_fit, ""]
-        lines += ["## Revision plan", ""]
-        lines += [f"{n}. {s.step} *({s.why})*" for n, s in enumerate(d.action_plan, 1)]
-        lines.append("")
+        for heading, items in _council_parts(result, number):
+            numbered = heading == "Revision plan"
+            lines += [f"### {heading}", ""]
+            lines += [f"{n}. {x}" if numbered else f"- {x}" for n, x in enumerate(items, 1)]
+            lines.append("")
     lines += ["## Issues", ""]
     if not kept:
         lines += ["No issues survived the final check.", ""]
     for n, (f, v) in enumerate(kept, 1):
         where = ", ".join(f"`{x}`" if x == f.source_line else x for x in _where(f))
         flag = "" if _quote_ok(result, f) else " ⚠️ quote not found in the paper's text, check location by hand"
+        also = _also_at(f, merged)
         lines += [
             f"### {n}. {f.problem}",
             "",
             f"**{v.severity.title()}** · confidence {v.confidence} · {f.category} · {where}{flag}",
             "",
+            *([f"*Same problem also at:* {also}", ""] if also else []),
             f"> {f.quote}",
             "",
             f"**Check:** {f.check}",
             "",
             f"**Suggested fix:** {f.suggested_fix}",
             "",
-            f"*Final reviewer note:* {v.reason}",
-            "",
         ]
-    if result.council:
-        lines += ["## Reviewer notes", "", f"> {_notes_note(result)}", ""]
-        lines += [f"- {_page(p)}*{role}:* {p.point}" for role, p in _notes(result)]
-        lines.append("")
-    if merged:
-        lines += ["## Merged duplicates", "", "Found by more than one checker; reported once above:", ""]
-        lines += [f"- **{v.id}** → same as **{_same_as(v, kept)}**: {f.problem if f else ''}" for f, v in merged]
-        lines.append("")
-    if rejected:
-        lines += ["## Rejected candidates", "", "Raised by a checker, then rejected on re-checking:", ""]
-        for f, v in rejected:
-            lines.append(f"- **{v.id}** ({f.location if f else '?'}): {f.problem if f else ''} *Rejected because:* {v.reason}")
-        lines.append("")
+    lines += [f"*{_LEFT_OUT}*", ""]
     return "\n".join(lines)
 
 
@@ -164,6 +174,7 @@ def _p(label: str, text: str) -> str:
 
 def to_html(result: AuditResult, usage: Usage) -> str:
     kept, merged, rejected = _sections(result)
+    number = _numbers(kept, merged)
     out = [
         f"<h1>{escape(_name(result))}</h1>",
         f'<p class="sub">{escape(_subtitle(result, usage, kept, merged, rejected))}</p>',
@@ -174,11 +185,13 @@ def to_html(result: AuditResult, usage: Usage) -> str:
     ]
     if result.decision:
         d = result.decision
-        out += ["<h2>Verdict</h2>", f'<p class="note">{escape(_council_note(result))}</p>', f"<p>{escape(d.verdict)}</p>"]
+        out += ["<h2>Council verdict</h2>", f'<p class="note">{escape(_council_note(result))}</p>', f"<p>{escape(d.verdict)}</p>"]
         if d.journal_fit:
             out += [f"<h2>Fit with {escape(result.options.journal or 'the target journal')}</h2>", f"<p>{escape(d.journal_fit)}</p>"]
-        out.append("<h2>Revision plan</h2>")
-        out += [f'<p class="item">{n}. {escape(s.step)} <i>({escape(s.why)})</i></p>' for n, s in enumerate(d.action_plan, 1)]
+        for heading, items in _council_parts(result, number):
+            mark = (lambda n: f"{n}.") if heading == "Revision plan" else (lambda n: "•")
+            out.append(f"<h3>{escape(heading)}</h3>")
+            out += [f'<p class="item">{mark(n)} {escape(x)}</p>' for n, x in enumerate(items, 1)]
     out.append("<h2>Issues</h2>")
     if not kept:
         out.append("<p>No issues survived the final check.</p>")
@@ -190,26 +203,15 @@ def to_html(result: AuditResult, usage: Usage) -> str:
         ]
         if not _quote_ok(result, f):
             out.append('<p class="warn">Quote not found in the paper\'s text: check the location by hand.</p>')
+        also = _also_at(f, merged)
+        if also:
+            out.append(f'<p class="meta"><b>Same problem also at:</b> {escape(also)}</p>')
         out += [
             f'<p class="quote">{escape(f.quote)}</p>',
             _p("Check:", f.check),
             _p("Suggested fix:", f.suggested_fix),
-            f'<p class="note">Final reviewer note: {escape(v.reason)}</p>',
         ]
-    if result.council:
-        out += ["<h2>Reviewer notes</h2>", f'<p class="note">{escape(_notes_note(result))}</p>']
-        out += [f'<p class="item">• {escape(_page(p))}<b>{escape(role)}:</b> {escape(p.point)}</p>' for role, p in _notes(result)]
-    if merged:
-        out += ["<h2>Merged duplicates</h2>", '<p class="note">Found by more than one checker; reported once above.</p>']
-        out += [f'<p class="item">• <b>{escape(v.id)}</b> → same as <b>{escape(_same_as(v, kept))}</b>: {escape(f.problem if f else "")}</p>'
-                for f, v in merged]
-    if rejected:
-        out += ["<h2>Rejected candidates</h2>", '<p class="note">Raised by a checker, then rejected on re-checking.</p>']
-        out += [
-            f'<p class="item">• <b>{escape(v.id)}</b> ({escape(f.location if f else "?")}): {escape(f.problem if f else "")} '
-            f"<i>Rejected because:</i> {escape(v.reason)}</p>"
-            for f, v in rejected
-        ]
+    out.append(f'<p class="note">{escape(_LEFT_OUT)}</p>')
     return "<body>" + "\n".join(out) + "</body>"
 
 

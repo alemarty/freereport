@@ -35,7 +35,8 @@ class Verdict(BaseModel):
     id: str
     keep: bool
     reason: str = Field(description="Why the finding was kept or rejected.")
-    duplicate_of: str = Field(description="If this candidate reports the same problem as another candidate, that candidate's id (and keep must be false); otherwise ''.")
+    duplicate_of: str = Field(description="If this candidate reports the same problem as another candidate, or another place where "
+                              "the same underlying error shows up, that candidate's id (and keep must be false); otherwise ''.")
     severity: Severity
     confidence: Confidence
 
@@ -81,10 +82,29 @@ class RevisionStep(BaseModel):
     why: str
 
 
+class CouncilConclusion(BaseModel):
+    """One point of the council's joint report."""
+
+    point: str = Field(description="The point in one to three sentences, in the council's own words.")
+    support: str = Field(description="Who raised or backs it, e.g. '4 of 5: Contrarian, Methods Referee, Outsider, First Principles'.")
+    issues: list[str] = Field(description="Ids of verified findings this point relies on (e.g. ['M1', 'D4']); [] if none. Cite them instead of restating them.")
+
+
+class CouncilStep(BaseModel):
+    step: str = Field(description="One revision step in one or two sentences.")
+    issues: list[str] = Field(description="Ids of verified findings this step fixes; [] if none.")
+
+
 class CouncilDecision(BaseModel):
+    """The chair's single council report, merging the five members' opinions."""
+
     verdict: str = Field(description="2-4 sentences: is the paper ready to submit, and what matters most.")
-    action_plan: list[RevisionStep] = Field(description="Ordered revision steps, most important first.")
     journal_fit: str = Field(description="Fit with the target journal, if one was given; otherwise ''.")
+    main_concerns: list[CouncilConclusion] = Field(description="What the council agrees matters most, most important first. At most 6.")
+    disagreements: list[CouncilConclusion] = Field(description="Where members contradict each other: state both sides and the "
+                                                    "council's ruling (by majority and by the evidence). [] if none.")
+    side_notes: list[CouncilConclusion] = Field(description="Raised by a member but not a main concern, one sentence each. At most 6.")
+    action_plan: list[CouncilStep] = Field(description="Ordered revision steps, most important first. At most 8.")
 
 
 # --- Referee response mode -----------------------------------------------
