@@ -21,7 +21,7 @@ class FakeUsage:
 
 def finding(id, category, quote, problem):
     return {
-        "id": id, "category": category, "page": 1, "source_line": "", "location": "x", "quote": quote,
+        "id": id, "title": problem, "category": category, "page": 1, "source_line": "", "location": "x", "quote": quote,
         "problem": problem, "check": "c", "suggested_fix": "f", "severity": "major", "confidence": "high",
     }
 
@@ -51,9 +51,9 @@ class FakeBackend:
         if label == "council_executive":
             fit = "Good fit, shorten the intro." if "journal_fit: 2-4" in task else ""
             return {"verdict": "Fix the errors first.", "journal_fit": fit,
-                    "main_concerns": [{"point": "The key expansion is wrong", "support": "4 of 5", "issues": ["D3"]}],
-                    "disagreements": [{"point": "Keep the model section? Yes, 3 to 2", "support": "3 of 5", "issues": []}],
-                    "side_notes": [{"point": "Define N early", "support": "Outsider", "issues": []}],
+                    "main_concerns": [{"title": "Algebra", "point": "The key expansion is wrong", "support": "4 of 5", "issues": ["D3"]}],
+                    "disagreements": [{"title": "Model section", "point": "Keep the model section? Yes, 3 to 2", "support": "3 of 5", "issues": []}],
+                    "side_notes": [{"title": "", "point": "Define N early", "support": "Outsider", "issues": []}],
                     "action_plan": [{"step": "Fix Eq. 3", "issues": ["M1", "D1"]}]}
         if label == "data_auditor":
             return {"findings": [
@@ -80,7 +80,7 @@ def test_audit_end_to_end():
     assert result.quote_scores["D2"] < 0.8
     md = to_markdown(result, backend.usage)
     assert "Missing 2ab term" in md and "Hallucinated" not in md  # rejected candidates stay in the .json only
-    assert "*Same problem also at:*" in md and md.count("### ") == 2  # D3 shown inside issue 1, not on its own
+    assert "also at page 1" in md and md.count("### #") == 2  # D3 shown inside comment #1, not on its own
     assert '"cost_usd"' in to_json(result, backend.usage)
 
 
@@ -111,10 +111,10 @@ def test_optional_modes():
     md = to_markdown(result, backend.usage)
     # One joint council report before the issues; the members' own notes are only in the .json
     assert "council_Outsider point" not in md and "### Outsider" not in md
-    assert "- The key expansion is wrong (issue 1) — 4 of 5" in md  # D3 is a repeat of M1, so it cites issue 1
-    assert "1. Fix Eq. 3 (issues 1, 2)" in md
-    order = ["## Council verdict", "### Main concerns", "### Where the reviewers disagreed",
-             "### Raised, but not a main concern", "### Revision plan", "## Issues"]
+    assert "### Algebra\n\nThe key expansion is wrong (see #1)\n\n*Raised by 4 of 5*" in md  # D3 repeats M1, so it cites #1
+    assert "1. Fix Eq. 3 (see #1, #2)" in md
+    order = ["## Overall feedback", "**Verdict.**", "### Algebra", "### Where the reviewers disagreed",
+             "### Raised, but not a main concern", "### Revision plan", "## Detailed comments", "## About this report"]
     assert [md.index(h) for h in order] == sorted(md.index(h) for h in order)
 
 
@@ -125,8 +125,8 @@ def test_pdf_report(tmp_path):
     to_pdf(result, backend.usage, out)
     text = "".join(p.get_text() for p in pymupdf.open(out))
     assert "sample_paper.pdf" in text and "FreeReport audit" in text
-    assert "Missing 2ab term" in text and "Council verdict" in text and "Main concerns" in text
-    assert "Same problem also at" in text and "Rejected candidates" not in text
+    assert "#1 Missing 2ab term" in text and "Overall feedback" in text and "Detailed comments" in text
+    assert "also at" in text and "Hallucinated" not in text
     assert "page 1 of" in text
 
 
@@ -144,8 +144,8 @@ def test_journal_reaches_every_council_member_and_the_report():
     council_tasks = [t for label, t in backend.tasks.items() if label.startswith("council_")]
     assert len(council_tasks) == 6 and all("Nature Communications" in t for t in council_tasks)
     md = to_markdown(result, backend.usage)
-    assert "## Fit with Nature Communications\n\nGood fit, shorten the intro." in md
-    assert md.index("## Fit with") < md.index("## Issues")
+    assert "### Fit with Nature Communications\n\nGood fit, shorten the intro." in md
+    assert md.index("### Fit with") < md.index("## Detailed comments")
 
 
 def test_journal_turns_on_the_council(monkeypatch):

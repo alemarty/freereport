@@ -13,6 +13,7 @@ class Finding(BaseModel):
     """One suspected error, written by Agent 1 or Agent 2."""
 
     id: str = Field(description="Short id, e.g. 'M1' for math or 'D3' for data.")
+    title: str = Field("", description="Headline of 4-10 words naming the problem, e.g. 'Sample sizes in Figure 14 do not add up'.")
     category: Category
     page: int = Field(description="1-based page number of the PDF where the problem is, or 0 if no PDF was given.")
     source_line: str = Field(description="'file:line' in the LaTeX source, e.g. 'main.tex:212', or '' if no LaTeX source was given.")
@@ -85,7 +86,8 @@ class RevisionStep(BaseModel):
 class CouncilConclusion(BaseModel):
     """One point of the council's joint report."""
 
-    point: str = Field(description="The point in one to three sentences, in the council's own words.")
+    title: str = Field("", description="Headline of 3-8 words, e.g. 'Exposure measurement and shock timing'.")
+    point: str = Field(description="One short paragraph in the council's own words: what the problem is and what to do about it.")
     support: str = Field(description="Who raised or backs it, e.g. '4 of 5: Contrarian, Methods Referee, Outsider, First Principles'.")
     issues: list[str] = Field(description="Ids of verified findings this point relies on (e.g. ['M1', 'D4']); [] if none. Cite them instead of restating them.")
 

@@ -49,7 +49,7 @@ For each candidate, go back to the manuscript and re-check it independently:
   breaks several equations, or one count repeated in the abstract, text and a footnote): keep the one that best explains the
   cause, and mark the others duplicate_of it, so the author reads each problem once;
 - set the final severity and confidence yourself.
-Return one verdict per candidate id, then a short overall summary for the author.
+Return one verdict per candidate id, then a short overall summary for the author: plain prose that does not cite candidate ids (the author never sees them).
 
 CANDIDATE FINDINGS (JSON):
 {candidates}"""
@@ -121,7 +121,8 @@ not a summary of each member:
 - put points that only one member raised, or that matter less, in side_notes ("raised, but not a main concern");
 - drop points that are weak or not supported by the paper;
 - the verified findings are listed separately in the report: cite their ids in 'issues' instead of restating them.
-Keep every item short. Then give the verdict and an ordered, practical revision plan.
+Write main_concerns as short themed paragraphs a busy author can read in a minute: a headline, then the problem and
+the remedy in plain prose. Keep side notes to one sentence. Then give the verdict and an ordered, practical revision plan.
 
 VERIFIED FINDINGS (JSON):
 {findings}
