@@ -56,14 +56,15 @@ If you pay for ChatGPT (Plus or Pro) or Claude (Pro or Max), you can run FreeRep
    - Claude: install Claude Code (https://claude.com/claude-code), then run `claude` and sign in with your Claude account.
 2. Get FreeReport (first time: `git clone https://github.com/alemarty/freereport.git`, then `cd freereport` and `pip install -e .`; later: `git pull` and `pip install -e .`).
 3. Open the assistant **inside the `freereport` folder** (`codex` or `claude`) and ask, for example:
-   > Check my paper C:\Users\me\paper.zip with the council, deepdive and blindspot, for the Journal of International Economics.
+   > Check my paper C:\Users\me\paper.zip with deepdive and blindspot.
 4. It follows the instructions in `AGENTS.md`: it runs `freereport assistant`, does each task it is given, saves the answer and runs it again, until it prints `DONE`. The report is in `reports/`.
 
 Good to know:
-- A full run (all options) has 13 steps and reads the whole paper at each one, so it can use a large share of a plan's allowance; Pro or Max plans have more room. If the limit is reached, ask again later: the answers so far are kept in `freereport-work/` and it continues where it stopped.
+- Only the error checks are available this way: the basic run (3 steps), `--blindspot` and `--deepdive` (up to 7 steps with both). The council and `--journal` are left out because they would use up most plans' limits; they need `freereport check` with an API key.
+- Each step reads the whole paper, so a run can still use a good share of a plan's allowance; Pro or Max plans have more room. If the limit is reached, ask again later: the answers so far are kept in `freereport-work/` and it continues where it stopped.
 - Use the most capable model your plan offers (in Codex and Claude Code you can pick it with `/model`).
 - Results can vary a bit more between runs than with the API version, because the assistant runs the steps itself.
-- You can also run the loop by hand: `freereport assistant paper.zip --council` prints the next task file and where to save the answer.
+- You can also run the loop by hand: `freereport assistant paper.zip --blindspot` prints the next task file and where to save the answer.
 
 ## Install
 

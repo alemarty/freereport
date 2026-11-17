@@ -10,11 +10,12 @@ time and builds the report at the end.
 1. **Install once**, if `freereport --help` fails: `pip install -e .`
 2. **Start**, with the paper path and the options the person asked for:
    ```bash
-   freereport assistant PATH/TO/paper.zip --council --journal "Journal Name"
+   freereport assistant PATH/TO/paper.zip --deepdive --blindspot
    ```
    Options: `--deepdive` (exhaustive, in two halves), `--blindspot` (re-scan each draft for what it
-   missed), `--council` (opinions on the whole paper), `--journal "Name"` (council judges fit, turns on
-   `--council`). With no options it runs the 3 core checks. Keep the same options for every run.
+   missed). With no options it runs the 3 core checks. Keep the same options for every run. The council
+   and journal review are not offered here (they would use up most plans' limits); they need
+   `freereport check` with an API key.
 3. **Loop until DONE.** Each run prints `NEXT STEP` with a task file and an answer file:
    - read the task file, then read the manuscript files it lists, in full (the LaTeX source has
      'line|' numbers; look at the figure images too);
@@ -34,6 +35,6 @@ time and builds the report at the end.
 - Quote the paper verbatim (without the 'line|' prefix) and cite page and `file:line`. The report flags
   quotes it cannot find in the paper.
 - Show the working (the calculation or logical steps) so a human can verify each finding in a minute.
-- A run has 3 to 13 steps and can be long. Keep going until `DONE` unless the person stops you; if your
+- A run has 3 to 7 steps and can be long. Keep going until `DONE` unless the person stops you; if your
   plan's limit is reached, the saved answers are kept and the same command continues where it stopped.
 - Do not change the code in this repository to get a run through.

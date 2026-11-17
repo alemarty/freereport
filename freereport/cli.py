@@ -153,7 +153,9 @@ def main(argv: list[str] | None = None) -> int:
     helper.add_argument("paper", type=Path, help="PDF, LaTeX (.tex) or source bundle (.zip / .tar.gz).")
     helper.add_argument("--work", type=Path, help="Folder for the tasks and answers (default: freereport-work/<paper name>/).")
     helper.add_argument("--out", type=Path, default=Path("reports"), help="Folder for the report (default: reports/).")
-    _add_modes(helper)
+    # No council or journal here: they add 6 long steps, too much for most plans' limits.
+    helper.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking: each checker goes through the paper in two halves.")
+    helper.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
 
     args = parser.parse_args(argv)
     if args.command == "assistant":
@@ -233,8 +235,7 @@ def main(argv: list[str] | None = None) -> int:
 def _assistant(args) -> int:
     from . import assistant
 
-    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council or bool(args.journal),
-                   journal=args.journal)
+    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot)
     work = args.work or Path("freereport-work") / _stem(args.paper)
     try:
         result, backend = assistant.run(load(args.paper), opts, work)

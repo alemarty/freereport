@@ -7,7 +7,7 @@ from test_pipeline import SAMPLE, FakeBackend
 def test_assistant_mode_hands_out_tasks_then_writes_the_report(tmp_path, capsys):
     """Each run names one task; once every answer is saved, the report is written."""
     work, out, fake = tmp_path / "work", tmp_path / "reports", FakeBackend()
-    argv = ["assistant", str(SAMPLE), "--work", str(work), "--out", str(out), "--council", "--journal", "JIE"]
+    argv = ["assistant", str(SAMPLE), "--work", str(work), "--out", str(out), "--blindspot"]
     steps = []
     while (code := cli.main(argv)) == 3:
         label = capsys.readouterr().out.split("): ")[1].split("\n")[0]
@@ -17,7 +17,7 @@ def test_assistant_mode_hands_out_tasks_then_writes_the_report(tmp_path, capsys)
         (work / "answers" / f"{name}.json").write_text(json.dumps(fake.ask(label, "", task, {})))
         steps.append(label)
         assert len(steps) < 20
-    assert code == 0 and steps[:3] == ["adversary", "data_auditor", "synthesis"] and steps[-1] == "council_executive"
+    assert code == 0 and steps == ["adversary", "adversary_blindspot", "data_auditor", "data_auditor_blindspot", "synthesis"]
     assert "DONE. 2 issue(s) found." in capsys.readouterr().out
     assert (out / "sample_paper.pdf").exists() and "Missing 2ab term" in (out / "sample_paper.md").read_text()
 
@@ -29,3 +29,9 @@ def test_assistant_mode_explains_a_bad_answer(tmp_path, capsys):
     (work / "answers" / "adversary.json").write_text('{"findings": [{"id": "M1"}]}')
     assert cli.main(argv) == 2
     assert "does not follow the schema" in capsys.readouterr().err
+
+
+def test_assistant_mode_has_no_council(capsys):
+    import pytest
+    with pytest.raises(SystemExit):
+        cli.main(["assistant", str(SAMPLE), "--council"])
