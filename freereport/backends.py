@@ -22,6 +22,7 @@ from .paper import Paper
 # so the high end of the estimate assumes every call pays full price for it.
 PRICES = {
     # cache_write keeps the paper ready for 5 minutes, cache_write_1h for an hour
+    "claude-fable-5-2": {"input": 8.00, "output": 40.00, "cache_write": 10.00, "cache_write_1h": 16.00, "cache_read": 0.20},
     "claude-opus-5-5": {"input": 4.00, "output": 20.00, "cache_write": 5.00, "cache_write_1h": 8.00, "cache_read": 0.20},
     "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_write": 2.50, "cache_write_1h": 4.00, "cache_read": 0.20},
     "gpt-6-astra": {"input": 10.00, "output": 50.00, "cache_write": 10.00, "cache_read": 1.00, "implicit_cache": True},

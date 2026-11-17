@@ -14,6 +14,39 @@ It runs three AI "agents" (separate AI calls, each with its own job):
 
 Every reported issue gives a **page number, a location and an exact quote**, so you can check it yourself in a minute. The tool also confirms each quote really exists in the PDF; if it can't, the report marks it with ⚠️.
 
+## Quick start (best model)
+
+For someone who just wants to run it on a paper with a top model. Copy each line into a terminal (Terminal on macOS, PowerShell on Windows).
+
+1. **Get the code** (first time only). You need Python 3.10 or newer and git.
+   ```bash
+   git clone https://github.com/alemarty/freereport.git
+   cd freereport
+   pip install -e .
+   ```
+   Already have it? Get the latest version instead, from inside the `freereport` folder:
+   ```bash
+   git pull
+   pip install -e .
+   ```
+2. **Set your API key** for the company whose model you use (see the table below). For example, for Claude:
+   - macOS / Linux: `export ANTHROPIC_API_KEY="sk-ant-..."`
+   - Windows PowerShell: `$env:ANTHROPIC_API_KEY = "sk-ant-..."`
+
+   For GPT, set `OPENAI_API_KEY` instead and run `pip install -e ".[openai]"` once.
+3. **Run it** with a top model and all the checks:
+   ```bash
+   # Claude Fable 5.2 (Anthropic's most capable model)
+   freereport check my_paper.zip --model claude-fable-5-2 --deepdive --blindspot --council --journal "Journal of International Economics"
+
+   # or OpenAI's top model, GPT-6 Astra
+   freereport check my_paper.zip --model gpt-6-astra --deepdive --blindspot --council --journal "Journal of International Economics"
+   ```
+   It first shows the estimated cost and asks before paying. With Claude you can add `--overnight` for half price; the answer then comes within a few hours.
+4. **Read the report**: `reports/my_paper.pdf` (also `.md` and `.json`).
+
+`my_paper.zip` can be a .zip of your LaTeX folder, a single `.tex` file or a PDF. Leave out `--journal` if you have no target journal.
+
 ## Install
 
 You need Python 3.10 or newer.
@@ -42,6 +75,7 @@ Pick the model with `--model`; the company is recognised from the name:
 
 | `--model` | Company | Price per million tokens (in / out) | Note |
 |---|---|---|---|
+| `claude-fable-5-2` | Anthropic | $8 / $40 | Anthropic's most capable model; about twice Opus. |
 | `claude-opus-5-5` (default) | Anthropic | $4 / $20 | What the prompts were tuned on. |
 | `claude-sonnet-5-5` | Anthropic | $2 / $10 | About half the price. |
 | `gpt-6.1-sol` | OpenAI | $2 / $10 | |
