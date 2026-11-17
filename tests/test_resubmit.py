@@ -137,11 +137,14 @@ def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
         def __init__(self, paper, model, effort):
             pass
 
+        def count_tokens(self, system, extra=""):
+            return 2_000
+
     def fake_audit(paper, backend, opts):
         seen["opts"], seen["effort"] = opts, backend.effort
         raise SystemExit(0)  # stop here: only the options matter
 
-    monkeypatch.setattr(cli, "ClaudeBackend", Dummy)
+    monkeypatch.setattr(cli, "make_backend", Dummy)
     monkeypatch.setattr(cli, "audit", fake_audit)
     args = ["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
             "--reviews", str(REPORTS[0]), "--out", str(tmp_path), "--yes"]
@@ -150,7 +153,7 @@ def test_resubmit_passes_extra_modes_to_the_error_check(tmp_path, monkeypatch):
     except SystemExit:
         pass
     assert seen["opts"].deepdive and seen["opts"].council and not seen["opts"].blindspot
-    assert seen["effort"] == "max"
+    assert seen["effort"] == "xhigh"
 
 
 def test_resubmit_rejects_modes_with_no_check(capsys):
@@ -200,7 +203,7 @@ def test_quick_resubmit_sends_no_paper_and_skips_the_error_check(tmp_path, monke
         built["paper"] = paper
         return LetterBackend()
 
-    monkeypatch.setattr(cli, "ClaudeBackend", fake_backend)
+    monkeypatch.setattr(cli, "make_backend", fake_backend)
     monkeypatch.setattr(cli, "audit", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no error check in --quick")))
     cli.main(["resubmit", str(ROOT / "sample_paper_revised.pdf"), "--original", str(ROOT / "sample_paper.pdf"),
               "--reviews", *map(str, REPORTS), "--quick", "--out", str(tmp_path), "--yes"])

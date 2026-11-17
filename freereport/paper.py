@@ -22,6 +22,9 @@ from .pdf import page_texts
 
 _INPUT = re.compile(r"\\(?:input|include|subfile)\{([^}]+)\}")
 _COMMENT = re.compile(r"(?<!\\)%.*")
+# Blocks the author switched off: \begin{comment}...\end{comment} and \iffalse ... \fi
+_BLOCK_START = re.compile(r"^\s*(\\begin\{comment\}|\\iffalse\b)")
+_BLOCK_END = {"\\begin{comment}": re.compile(r"\\end\{comment\}"), "\\iffalse": re.compile(r"\\fi\b")}
 _GRAPHIC = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
 _IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 MAX_FIGURES = 60  # the API accepts up to 100 images per request
@@ -43,24 +46,70 @@ class Paper:
 
     @property
     def tex_numbered(self) -> str:
-        """The LaTeX source as the models see it: 'file:line| text', blank lines left out."""
-        return "\n".join(f"{f}:{n}| {text}" for f, n, text in self.tex_lines if text.strip())
+        """The LaTeX source as the models see it: a '=== file: name ===' line where each
+        file starts or resumes, then 'line| text', blank lines left out. Writing the file
+        name only once, not on every line, makes the source about a quarter shorter."""
+        out, current = [], None
+        for f, n, text in self.tex_lines:
+            if not text.strip():
+                continue
+            if f != current:
+                out.append(f"=== file: {f} ===")
+                current = f
+            out.append(f"{n}| {text}")
+        return "\n".join(out)
 
     @property
     def tex_text(self) -> str:
         return "\n".join(text for _, _, text in self.tex_lines)
 
+    @property
+    def title(self) -> str:
+        """The paper's title from \\title{...}, or the PDF's metadata; '' if neither has one."""
+        tex = self.tex_text
+        start = re.search(r"\\title\s*(?:\[[^\]]*\])?\s*\{", tex)
+        if start:
+            depth, i = 1, start.end()
+            while i < len(tex) and depth:
+                depth += {"{": 1, "}": -1}.get(tex[i], 0)
+                i += 1
+            return _plain(tex[start.end():i - 1])
+        if self.pdf_path:
+            with pymupdf.open(self.pdf_path) as doc:
+                return (doc.metadata or {}).get("title", "").strip()
+        return ""
+
+
+def _plain(latex: str) -> str:
+    """LaTeX title text as plain words: footnotes and \\thanks dropped, other commands unwrapped."""
+    text = re.sub(r"\\(?:thanks|footnote)\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", latex)
+    text = re.sub(r"\\\\(?:\[[^\]]*\])?", " ", text)  # line breaks
+    text = re.sub(r"\\[A-Za-z]+\*?\s*", "", text)
+    text = text.replace("{", "").replace("}", "").replace("~", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
 
 def _flatten(path: Path, root: Path, seen: set[Path]) -> list[tuple[str, int, str]]:
-    """Read a .tex file, inlining \\input / \\include files and dropping comments."""
+    """Read a .tex file, inlining \\input / \\include files and dropping comments and
+    switched-off blocks (their lines are kept empty so line numbers stay right)."""
     path = path.resolve()
     if path in seen:
         return []
     seen.add(path)
     name = path.relative_to(root).as_posix() if path.is_relative_to(root) else path.name
-    lines = []
+    lines, block, block_end = [], [], None
     for n, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         line = _COMMENT.sub("", raw).rstrip()
+        if block_end is None and (start := _BLOCK_START.match(line)):
+            block_end, rest = _BLOCK_END[start.group(1)], line[start.end():]
+        else:
+            rest = line
+        if block_end is not None:
+            block.append((name, n, line))
+            if block_end.search(rest):
+                lines += [(f, k, "") for f, k, _ in block]
+                block, block_end = [], None
+            continue
         lines.append((name, n, line))
         match = _INPUT.search(line)
         if match:
@@ -69,7 +118,7 @@ def _flatten(path: Path, root: Path, seen: set[Path]) -> list[tuple[str, int, st
                 child = child.with_name(child.name + ".tex")
             if child.exists():
                 lines += _flatten(child, root, seen)
-    return lines
+    return lines + block  # a block that never closes is kept: better too much text than lost text
 
 
 def _pdf_to_png(path: Path) -> bytes:

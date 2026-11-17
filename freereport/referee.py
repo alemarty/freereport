@@ -24,7 +24,7 @@ from . import prompts
 from .backends import Backend, Usage
 from .paper import Paper
 from .pdf import normalise
-from .report import _CSS
+from .report import _CSS, write_pdf
 from .schema import (
     AssessmentList,
     CommentAssessment,
@@ -205,9 +205,7 @@ def to_html(result: RefereeResult, usage: Usage) -> str:
         "<h2>Overview</h2>",
         f"<p>{escape(result.overview.summary)}</p>",
         "<h2>Revision plan</h2>",
-        "<ol>",
-        *[f"<li>{escape(s.step)} <i>({escape(s.why)})</i></li>" for s in result.overview.plan],
-        "</ol>",
+        *[f'<p class="item">{n}. {escape(s.step)} <i>({escape(s.why)})</i></p>' for n, s in enumerate(result.overview.plan, 1)],
         "<h2>Comments, most serious first</h2>",
     ]
     for c, a in result.ranked():
@@ -231,22 +229,7 @@ def to_html(result: RefereeResult, usage: Usage) -> str:
 
 
 def to_pdf(result: RefereeResult, usage: Usage, path: Path) -> None:
-    story = pymupdf.Story(html=to_html(result, usage), user_css=_REFEREE_CSS)
-    page = pymupdf.paper_rect("a4")
-    body = page + (54, 54, -54, -60)
-    writer = pymupdf.DocumentWriter(str(path))
-    more = True
-    while more:
-        device = writer.begin_page(page)
-        more, _ = story.place(body)
-        story.draw(device)
-        writer.end_page()
-    writer.close()
-    with pymupdf.open(path) as doc:
-        for i, pg in enumerate(doc, 1):
-            pg.insert_text((54, page.height - 30), f"FreeReport · referee response · {result.paper} · page {i} of {doc.page_count}",
-                           fontsize=8, color=(0.45, 0.45, 0.45))
-        doc.saveIncr()
+    write_pdf(to_html(result, usage), _REFEREE_CSS, path, f"FreeReport · referee response · {result.paper}")
 
 
 def to_json(result: RefereeResult, usage: Usage) -> str:

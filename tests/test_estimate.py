@@ -13,7 +13,7 @@ def test_more_modes_cost_more_and_the_range_is_ordered():
     full = estimate.estimate(271_579, estimate.plan_check(Options(deepdive=True, blindspot=True, council=True)),
                              "claude-opus-5-5")
     assert 0 < base.low < base.high < full.high and base.low < full.low
-    assert len(base.calls) == 3 and len(full.calls) == 10
+    assert len(base.calls) == 3 and len(full.calls) == 13  # deepdive: two halves per checker
     # a real 272k-token paper cost $3.70 with the baseline: the range must contain it
     assert base.low < 3.70 < base.high
 
@@ -41,7 +41,7 @@ def test_answering_no_spends_nothing(monkeypatch, capsys):
         def count_tokens(self, system, extra=""):
             return 2_000
 
-    monkeypatch.setattr(cli, "ClaudeBackend", Fake)
+    monkeypatch.setattr(cli, "make_backend", Fake)
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
     assert cli.main(["check", str(SAMPLE)]) == 0
@@ -77,7 +77,7 @@ def _fake_backend(tokens):
 
 def test_too_large_paper_is_refused_before_any_call(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(cli, "ClaudeBackend", _fake_backend(500_000))
+    monkeypatch.setattr(cli, "make_backend", _fake_backend(500_000))
 
     def audit(*a, **k):  # record the paid run, then stop before writing reports
         calls.append(a)
@@ -93,15 +93,15 @@ def test_too_large_paper_is_refused_before_any_call(monkeypatch, capsys):
 
 def test_price_cap_refuses_expensive_runs(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(cli, "ClaudeBackend", _fake_backend(300_000))
+    monkeypatch.setattr(cli, "make_backend", _fake_backend(300_000))
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
-    assert cli.main(["check", str(SAMPLE), "--yes", "--council", "--max-cost", "10"]) == 1
-    assert "above the $10 cap" in capsys.readouterr().err and calls == []
+    assert cli.main(["check", str(SAMPLE), "--yes", "--council", "--max-cost", "5"]) == 1
+    assert "above the $5 cap" in capsys.readouterr().err and calls == []
 
 
 def test_limits_apply_per_paper_not_to_a_batch_total(monkeypatch):
     calls = []
-    monkeypatch.setattr(cli, "ClaudeBackend", _fake_backend(300_000))
+    monkeypatch.setattr(cli, "make_backend", _fake_backend(300_000))
     monkeypatch.setattr(cli, "audit", lambda *a, **k: calls.append(a))
     cli.main(["check", str(SAMPLE), str(SAMPLE), "--yes", "--estimate"])  # 600k in total, but each is 300k
     assert calls == []  # --estimate: nothing runs, and no limit error either
@@ -114,3 +114,27 @@ def test_size_split_names_figures():
     est = estimate.estimate(500_000, estimate.plan_check(Options()), "claude-opus-5-5")
     msg = estimate.limit_problem(paper, est, 400_000, 15)
     assert "40 figures" in msg and "removing some figures" in msg
+
+
+def test_long_runs_keep_the_paper_for_an_hour_and_cost_less_at_the_top():
+    base, council = estimate.plan_check(Options()), estimate.plan_check(Options(council=True))
+    assert not estimate.wants_long_cache(base) and estimate.wants_long_cache(council)
+    short = estimate.estimate(271_579, council, "claude-opus-5-5")
+    hour = estimate.estimate(271_579, council, "claude-opus-5-5", long_cache=True)
+    assert hour.high < short.high  # the paper is written once, not after every long call
+
+
+def test_one_hour_cache_writes_are_priced_separately():
+    from freereport.backends import Usage
+
+    class U:
+        input_tokens, output_tokens, cache_read_input_tokens = 100, 50, 0
+        cache_creation_input_tokens = 1_000_000
+
+        class cache_creation:
+            ephemeral_1h_input_tokens, ephemeral_5m_input_tokens = 1_000_000, 0
+
+    usage = Usage()
+    usage.add("adversary", U())
+    assert usage.cache_write == 0 and usage.cache_write_1h == 1_000_000
+    assert abs(usage.cost_usd("claude-opus-5-5") - (8.00 + 100 * 4e-6 + 50 * 20e-6)) < 1e-9

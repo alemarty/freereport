@@ -21,7 +21,7 @@ class FakeUsage:
 
 def finding(id, category, quote, problem):
     return {
-        "id": id, "category": category, "page": 1, "source_line": "", "location": "x", "quote": quote,
+        "id": id, "title": problem, "category": category, "page": 1, "source_line": "", "location": "x", "quote": quote,
         "problem": problem, "check": "c", "suggested_fix": "f", "severity": "major", "confidence": "high",
     }
 
@@ -36,6 +36,10 @@ class FakeBackend:
     def ask(self, label, system, task, schema):
         self.usage.add(label, FakeUsage())
         self.tasks[label] = task
+        label = label.removesuffix("_part1")  # --deepdive checks in two halves; the second finds nothing new
+        if label.endswith("_part2"):
+            return {"findings": [finding("M1", "math", "(a + b)^2 = a^2 + b^2", "Same id from the other half")]
+                    if label.startswith("adversary") else []}
         if label == "adversary":
             return {"findings": [finding("M1", "math", "(a + b)^2 = a^2 + b^2", "Missing 2ab term")]}
         if label == "adversary_blindspot":
@@ -46,8 +50,11 @@ class FakeBackend:
             return {"points": [{"point": f"{label} point", "page": 0}]}
         if label == "council_executive":
             fit = "Good fit, shorten the intro." if "journal_fit: 2-4" in task else ""
-            return {"verdict": "Fix the errors first.", "action_plan": [{"step": "Fix Eq. 3", "why": "critical"}],
-                    "journal_fit": fit}
+            return {"verdict": "Fix the errors first.", "journal_fit": fit,
+                    "main_concerns": [{"title": "Algebra", "point": "The key expansion is wrong", "support": "4 of 5", "issues": ["D3"]}],
+                    "disagreements": [{"title": "Model section", "point": "Keep the model section? Yes, 3 to 2", "support": "3 of 5", "issues": []}],
+                    "side_notes": [{"title": "", "point": "Define N early", "support": "Outsider", "issues": []}],
+                    "action_plan": [{"step": "Fix Eq. 3", "issues": ["M1", "D1"]}]}
         if label == "data_auditor":
             return {"findings": [
                 finding("D1", "data", "N = 412 students", "Table 1 totals 400, not 412"),
@@ -72,8 +79,8 @@ def test_audit_end_to_end():
     assert result.quote_scores["D1"] == 1.0
     assert result.quote_scores["D2"] < 0.8
     md = to_markdown(result, backend.usage)
-    assert "Missing 2ab term" in md and "Rejected candidates" in md
-    assert "**D3** → same as **issue 1**" in md and "D3** (" not in md  # merged, not listed as rejected
+    assert "Missing 2ab term" in md and "Hallucinated" not in md  # rejected candidates stay in the .json only
+    assert "also at page 1" in md and md.count("### #") == 2  # D3 shown inside comment #1, not on its own
     assert '"cost_usd"' in to_json(result, backend.usage)
 
 
@@ -92,13 +99,23 @@ def test_strict_schema_requires_every_field():
 
 def test_optional_modes():
     backend = FakeBackend()
-    result = audit(load(SAMPLE), backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
+    paper = load(SAMPLE)
+    paper.pages = paper.pages * 2  # two pages, so --deepdive can check it in two halves
+    result = audit(paper, backend, Options(deepdive=True, blindspot=True, council=True), log=lambda *_: None)
     labels = [c["agent"] for c in backend.usage.calls]
+    assert labels[:2] == ["adversary_part1", "adversary_part2"] and "adversary" not in labels
+    assert "PART 2 OF 2" in backend.tasks["adversary_part2"] and "M1b" in [f.id for f in result.candidates]
     assert labels.count("adversary_blindspot") == 1
-    assert sum(l.startswith("council_") for l in labels) == 5
+    assert sum(l.startswith("council_") for l in labels) == 6
     assert "M2" in [f.id for f in result.candidates]
     md = to_markdown(result, backend.usage)
-    assert "Council review" in md and "Fix Eq. 3" in md and "council_Outsider point" in md
+    # One joint council report before the issues; the members' own notes are only in the .json
+    assert "council_Outsider point" not in md and "### Outsider" not in md
+    assert "### Algebra\n\nThe key expansion is wrong (see #1)\n\n*Raised by 4 of 5*" in md  # D3 repeats M1, so it cites #1
+    assert "1. Fix Eq. 3 (see #1, #2)" in md
+    order = ["## Overall feedback", "**Verdict.**", "### Algebra", "### Where the reviewers disagreed",
+             "### Raised, but not a main concern", "### Revision plan", "## Detailed comments", "## About this report"]
+    assert [md.index(h) for h in order] == sorted(md.index(h) for h in order)
 
 
 def test_pdf_report(tmp_path):
@@ -107,8 +124,9 @@ def test_pdf_report(tmp_path):
     out = tmp_path / "report.pdf"
     to_pdf(result, backend.usage, out)
     text = "".join(p.get_text() for p in pymupdf.open(out))
-    assert "FreeReport audit: sample_paper.pdf" in text
-    assert "Missing 2ab term" in text and "Merged duplicates" in text and "Council review" in text
+    assert "sample_paper.pdf" in text and "FreeReport audit" in text
+    assert "#1 Missing 2ab term" in text and "Overall feedback" in text and "Detailed comments" in text
+    assert "also at" in text and "Hallucinated" not in text
     assert "page 1 of" in text
 
 
@@ -124,9 +142,10 @@ def test_journal_reaches_every_council_member_and_the_report():
     backend = FakeBackend()
     result = audit(load(SAMPLE), backend, Options(council=True, journal="Nature Communications"), log=lambda *_: None)
     council_tasks = [t for label, t in backend.tasks.items() if label.startswith("council_")]
-    assert len(council_tasks) == 5 and all("Nature Communications" in t for t in council_tasks)
+    assert len(council_tasks) == 6 and all("Nature Communications" in t for t in council_tasks)
     md = to_markdown(result, backend.usage)
-    assert "**Fit with Nature Communications:** Good fit, shorten the intro." in md
+    assert "### Fit with Nature Communications\n\nGood fit, shorten the intro." in md
+    assert md.index("### Fit with") < md.index("## Detailed comments")
 
 
 def test_journal_turns_on_the_council(monkeypatch):
@@ -136,3 +155,25 @@ def test_journal_turns_on_the_council(monkeypatch):
     monkeypatch.setattr(cli, "Options", lambda **kw: seen.update(kw) or Options(**kw))
     cli.main(["check", "x.pdf", "--journal", "Ecology Letters"])
     assert seen["council"] is True and seen["journal"] == "Ecology Letters"
+
+
+def test_pdf_is_laid_out_again_when_text_runs_off_a_page(tmp_path, monkeypatch):
+    """PyMuPDF can report a page done after running text past its bottom edge, and
+    that text is lost; the report must notice and lay the pages out again."""
+    from freereport import report
+    real, heights = pymupdf.Story, []
+
+    class Story(real):
+        def place(self, where):
+            more, filled = super().place(where)
+            heights.append(where[3])
+            if len(heights) == 1:  # first layout: pretend the text overflowed the page
+                filled = (filled[0], filled[1], filled[2], 1035.0)
+            return more, filled
+
+    monkeypatch.setattr(report.pymupdf, "Story", Story)
+    backend = FakeBackend()
+    result = audit(load(SAMPLE), backend, Options(), log=lambda *_: None)
+    to_pdf(result, backend.usage, tmp_path / "report.pdf")
+    assert len(heights) == 2 and heights[1] < heights[0]
+    assert "Missing 2ab term" in "".join(p.get_text() for p in pymupdf.open(tmp_path / "report.pdf"))
