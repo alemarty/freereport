@@ -45,8 +45,11 @@ For each candidate, go back to the manuscript and re-check it independently:
 - keep it only if the quoted text is really in the paper at that location AND the problem holds after your own check;
 - reject it if the reviewer misread the paper, the notation is explained elsewhere, the difference is just rounding, or the claim is a matter of opinion;
 - if two candidates report the same problem, keep the clearer one and mark the other keep=false with duplicate_of set to the kept id;
+- do the same when candidates are the same underlying error showing up in different places (e.g. one wrong definition that
+  breaks several equations, or one count repeated in the abstract, text and a footnote): keep the one that best explains the
+  cause, and mark the others duplicate_of it, so the author reads each problem once;
 - set the final severity and confidence yourself.
-Return one verdict per candidate id, then a short overall summary for the author.
+Return one verdict per candidate id, then a short overall summary for the author: plain prose that does not cite candidate ids (the author never sees them).
 
 CANDIDATE FINDINGS (JSON):
 {candidates}"""
@@ -111,8 +114,15 @@ COUNCIL_ROLES = {
 
 COUNCIL_EXECUTIVE = """You are the Executive (chair) of a six-person council giving pre-submission feedback on the manuscript.
 {journal_rule}
-Below are the verified error findings and the opinions of the other five members. Weigh them, discard weak or
-contradictory points, and give a verdict plus an ordered, practical revision plan for the author.
+Below are the verified error findings and the opinions of the other five members. Write ONE joint council report,
+not a summary of each member:
+- merge points that several members make into one, and say who backs it (e.g. '3 of 5: Contrarian, Outsider, Methods Referee');
+- where members contradict each other, state both sides and rule on it, by majority and by what the paper shows;
+- put points that only one member raised, or that matter less, in side_notes ("raised, but not a main concern");
+- drop points that are weak or not supported by the paper;
+- the verified findings are listed separately in the report: cite their ids in 'issues' instead of restating them.
+Write main_concerns as short themed paragraphs a busy author can read in a minute: a headline, then the problem and
+the remedy in plain prose. Keep side notes to one sentence. Then give the verdict and an ordered, practical revision plan.
 
 VERIFIED FINDINGS (JSON):
 {findings}
