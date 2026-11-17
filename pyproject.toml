@@ -1,9 +1,10 @@
 [project]
 name = "freereport"
 version = "0.1.0"
-description = "Open-source multi-agent checker that finds math and data errors in academic papers."
+description = "Multi-agent checker that finds math and data errors in academic papers."
 readme = "README.md"
-license = "MIT"
+license = "LicenseRef-All-Rights-Reserved"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "anthropic>=2.0",
