@@ -14,6 +14,39 @@ It runs three AI "agents" (separate AI calls, each with its own job):
 
 Every reported issue gives a **page number, a location and an exact quote**, so you can check it yourself in a minute. The tool also confirms each quote really exists in the PDF; if it can't, the report marks it with ⚠️.
 
+## Quick start (best model)
+
+For someone who just wants to run it on a paper with a top model. Copy each line into a terminal (Terminal on macOS, PowerShell on Windows).
+
+1. **Get the code** (first time only). You need Python 3.10 or newer and git.
+   ```bash
+   git clone https://github.com/alemarty/freereport.git
+   cd freereport
+   pip install -e .
+   ```
+   Already have it? Get the latest version instead, from inside the `freereport` folder:
+   ```bash
+   git pull
+   pip install -e .
+   ```
+2. **Set your API key** for the company whose model you use (see the table below). For example, for Claude:
+   - macOS / Linux: `export ANTHROPIC_API_KEY="sk-ant-..."`
+   - Windows PowerShell: `$env:ANTHROPIC_API_KEY = "sk-ant-..."`
+
+   For GPT, set `OPENAI_API_KEY` instead and run `pip install -e ".[openai]"` once.
+3. **Run it** with a top model and all the checks:
+   ```bash
+   # Claude Fable 5.2 (Anthropic's most capable model)
+   freereport check my_paper.zip --model claude-fable-5-2 --deepdive --blindspot --council --journal "Journal of International Economics"
+
+   # or OpenAI's top model, GPT-6 Astra
+   freereport check my_paper.zip --model gpt-6-astra --deepdive --blindspot --council --journal "Journal of International Economics"
+   ```
+   It first shows the estimated cost and asks before paying. With Claude you can add `--overnight` for half price; the answer then comes within a few hours.
+4. **Read the report**: `reports/my_paper.pdf` (also `.md` and `.json`).
+
+`my_paper.zip` can be a .zip of your LaTeX folder, a single `.tex` file or a PDF. Leave out `--journal` if you have no target journal.
+
 ## Install
 
 You need Python 3.10 or newer.
@@ -42,6 +75,7 @@ Pick the model with `--model`; the company is recognised from the name:
 
 | `--model` | Company | Price per million tokens (in / out) | Note |
 |---|---|---|---|
+| `claude-fable-5-2` | Anthropic | $8 / $40 | Anthropic's most capable model; about twice Opus. |
 | `claude-opus-5-5` (default) | Anthropic | $4 / $20 | What the prompts were tuned on. |
 | `claude-sonnet-5-5` | Anthropic | $2 / $10 | About half the price. |
 | `gpt-6.1-sol` | OpenAI | $2 / $10 | |
@@ -126,12 +160,12 @@ Every run starts with the **baseline**: the 3 core agents (Adversary, Data Audit
 |---|---|---|---|
 | `--deepdive` | **Read slower.** Exhaustive, at extra-high effort, in two halves of the paper so each answer fits: section by section, re-derive every step, check every table cell, appendices included. | Small errors a normal read skims past: a wrong sign in step 4 of a proof, one cell in Table 5 that does not add up. | slower, roughly 2-3x |
 | `--blindspot` | **Look back at what was left out.** After the first pass, each agent re-reads its own list and asks "what did I miss?". | Gaps rather than typos: an assumption never stated, a theorem condition never checked ("Lemma 2 needs independence, but the paper never shows it holds"), a section skipped. | +2 calls |
-| `--council` | **Opinions on the paper as a whole**, from six roles: Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (jargon or notation unclear to a non-specialist), Methods Referee (identification and statistics: comparison groups, confounders, fixed effects, sample definitions, clustering, pre-trends, scaling local estimates up to totals; for any field that uses data), Executive (verdict and ordered revision plan). | Big-picture weaknesses no line-by-line check finds, including research-design problems. | +6 calls |
+| `--council` | **Opinions on the paper as a whole**, from six roles: Contrarian (how the main claim could fail), First Principles (does the method really answer the question), Expansionist (where the contribution is undersold), Outsider (jargon or notation unclear to a non-specialist), Methods Referee (identification and statistics: comparison groups, confounders, fixed effects, sample definitions, clustering, pre-trends, scaling local estimates up to totals; for any field that uses data), Executive (the chair: merges the five into one council report with verdict, main concerns, disagreements settled by majority, side notes and an ordered revision plan). | Big-picture weaknesses no line-by-line check finds, including research-design problems. | +6 calls |
 | `--journal "Name"` | **Council tuned to a target journal**: it also judges fit with the journal's scope, the kind of contribution it publishes, and its tone and style, and the Executive writes a "Fit with ..." paragraph. Works for any field. Turns on `--council`. | Mismatch with the journal: too long, too technical for its readers, a contribution it rarely publishes. | same as `--council` |
 
 In short: **deepdive** goes deeper into what is written, **blindspot** checks what is missing, **council** steps back to judge the whole paper.
 
-The council's points are **opinions** and appear in their own section, separate from the verified error list, so they never mix with real errors. If the model does not know a journal well, it says so instead of guessing its policies.
+The council's points are **opinions** and appear as one joint council report, separate from the verified error list, so they never mix with real errors. Its points cite issue numbers instead of repeating them. Each member's own notes are kept in the .json file. In the issue list, the same error found in several places is shown once, with "Same problem also at" listing the other places. If the model does not know a journal well, it says so instead of guessing its policies.
 
 Examples:
 

@@ -125,3 +125,12 @@ def test_switched_off_blocks_are_not_sent_but_line_numbers_stay(tmp_path):
     assert "draft" not in numbered and "unused" not in numbered
     assert "9| Kept text." in numbered
     assert "10| \\iffalse never closed\n11| last line" in numbered  # an unclosed block is kept
+
+
+def test_title_is_read_from_latex(tmp_path):
+    tex = tmp_path / "main.tex"
+    tex.write_text("\\documentclass{article}\n\\title{Fragile Links:\\\\ Road \\textit{Disruptions}\n"
+                   "and Trade\\thanks{We thank {Ana}.}}\n\\begin{document}\\end{document}\n")
+    assert load(tex).title == "Fragile Links: Road Disruptions and Trade"
+    tex.write_text("\\documentclass{article}\n\\begin{document}\\end{document}\n")
+    assert load(tex).title == ""

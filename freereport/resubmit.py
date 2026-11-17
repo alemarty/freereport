@@ -28,6 +28,7 @@ import pymupdf
 from . import prompts
 from .backends import Backend, Usage
 from .paper import Paper
+from .report import write_pdf
 from .referee import PRIORITY_ORDER, _REFEREE_CSS, _find, _hex, read_report
 from .schema import (
     CommentStatus,
@@ -421,9 +422,8 @@ def to_html(result: ResubmitResult, usage: Usage) -> str:
             out.append(f'<p><span class="label" style="color:{_hex(STATUS_RGB["not_addressed"])}">Still to do:</span> {escape(s.remaining)}</p>')
     if result.overview.unrequested:
         out += ["<h2>Changes no referee asked for</h2>",
-                '<p class="note">Editors often ask about these. Mention them in the response letter.</p>', "<ul>"]
-        out += [f"<li><b>{escape(u.change)}</b>: {escape(u.what)} <i>{escape(u.note)}</i></li>" for u in result.overview.unrequested]
-        out.append("</ul>")
+                '<p class="note">Editors often ask about these. Mention them in the response letter.</p>']
+        out += [f'<p class="item">• <b>{escape(u.change)}</b>: {escape(u.what)} <i>{escape(u.note)}</i></p>' for u in result.overview.unrequested]
     out += ["<h2>Draft response letter</h2>", f"<p>{escape(result.overview.letter_opening)}</p>"]
     for c in result.comments:
         s = result.statuses.get(c.id)
@@ -435,22 +435,7 @@ def to_html(result: ResubmitResult, usage: Usage) -> str:
 
 
 def to_pdf(result: ResubmitResult, usage: Usage, path: Path) -> None:
-    story = pymupdf.Story(html=to_html(result, usage), user_css=_REFEREE_CSS)
-    page = pymupdf.paper_rect("a4")
-    body = page + (54, 54, -54, -60)
-    writer = pymupdf.DocumentWriter(str(path))
-    more = True
-    while more:
-        device = writer.begin_page(page)
-        more, _ = story.place(body)
-        story.draw(device)
-        writer.end_page()
-    writer.close()
-    with pymupdf.open(path) as doc:
-        for i, pg in enumerate(doc, 1):
-            pg.insert_text((54, page.height - 30), f"FreeReport · resubmission check · {result.paper} · page {i} of {doc.page_count}",
-                           fontsize=8, color=(0.45, 0.45, 0.45))
-        doc.saveIncr()
+    write_pdf(to_html(result, usage), _REFEREE_CSS, path, f"FreeReport · resubmission check · {result.paper}")
 
 
 def to_json(result: ResubmitResult, usage: Usage) -> str:

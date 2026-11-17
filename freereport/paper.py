@@ -63,6 +63,31 @@ class Paper:
     def tex_text(self) -> str:
         return "\n".join(text for _, _, text in self.tex_lines)
 
+    @property
+    def title(self) -> str:
+        """The paper's title from \\title{...}, or the PDF's metadata; '' if neither has one."""
+        tex = self.tex_text
+        start = re.search(r"\\title\s*(?:\[[^\]]*\])?\s*\{", tex)
+        if start:
+            depth, i = 1, start.end()
+            while i < len(tex) and depth:
+                depth += {"{": 1, "}": -1}.get(tex[i], 0)
+                i += 1
+            return _plain(tex[start.end():i - 1])
+        if self.pdf_path:
+            with pymupdf.open(self.pdf_path) as doc:
+                return (doc.metadata or {}).get("title", "").strip()
+        return ""
+
+
+def _plain(latex: str) -> str:
+    """LaTeX title text as plain words: footnotes and \\thanks dropped, other commands unwrapped."""
+    text = re.sub(r"\\(?:thanks|footnote)\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", latex)
+    text = re.sub(r"\\\\(?:\[[^\]]*\])?", " ", text)  # line breaks
+    text = re.sub(r"\\[A-Za-z]+\*?\s*", "", text)
+    text = text.replace("{", "").replace("}", "").replace("~", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
 
 def _flatten(path: Path, root: Path, seen: set[Path]) -> list[tuple[str, int, str]]:
     """Read a .tex file, inlining \\input / \\include files and dropping comments and
