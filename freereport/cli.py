@@ -148,7 +148,16 @@ def main(argv: list[str] | None = None) -> int:
     resub.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     _add_cost(resub)
 
+    helper = sub.add_parser("assistant", help="Check a paper with an AI assistant (Codex on a ChatGPT plan, Claude Code on a "
+                            "Claude plan) instead of an API key: run it, do the task it names, run it again.")
+    helper.add_argument("paper", type=Path, help="PDF, LaTeX (.tex) or source bundle (.zip / .tar.gz).")
+    helper.add_argument("--work", type=Path, help="Folder for the tasks and answers (default: freereport-work/<paper name>/).")
+    helper.add_argument("--out", type=Path, default=Path("reports"), help="Folder for the report (default: reports/).")
+    _add_modes(helper)
+
     args = parser.parse_args(argv)
+    if args.command == "assistant":
+        return _assistant(args)
     if args.overnight and provider(args.model) != "anthropic":
         parser.error("--overnight works with Claude models for now; leave it out for GPT or Gemini")
     if args.command == "respond":
@@ -219,6 +228,34 @@ def main(argv: list[str] | None = None) -> int:
               f"  Report: {stem.with_suffix('.pdf')}  (also {stem.with_suffix('.md').name} and {stem.with_suffix('.json').name})"
               + _cost_line(backend, args.model))
     return 1 if failures else 0
+
+
+def _assistant(args) -> int:
+    from . import assistant
+
+    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council or bool(args.journal),
+                   journal=args.journal)
+    work = args.work or Path("freereport-work") / _stem(args.paper)
+    try:
+        result, backend = assistant.run(load(args.paper), opts, work)
+    except assistant.NeedAnswer as need:
+        done = len(list((work / "answers").glob("*.json")))
+        print(f"NEXT STEP ({done} done so far): {need.label}\n"
+              f"  1. Do the task in   {need.task_file}\n"
+              f"  2. Save the answer  {need.answer_file}\n"
+              f"  3. Run the same command again.")
+        return 3
+    except assistant.BadAnswer as exc:
+        print(f"PROBLEM: {exc}", file=sys.stderr)
+        return 2
+    args.out.mkdir(parents=True, exist_ok=True)
+    stem = args.out / _stem(args.paper)
+    stem.with_suffix(".md").write_text(to_markdown(result, backend.usage), encoding="utf-8")
+    stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
+    to_pdf(result, backend.usage, stem.with_suffix(".pdf"))
+    print(f"\nDONE. {len(result.kept())} issue(s) found.\n"
+          f"  Report: {stem.with_suffix('.pdf')}  (also {stem.with_suffix('.md').name} and {stem.with_suffix('.json').name})")
+    return 0
 
 
 def _respond(args) -> int:

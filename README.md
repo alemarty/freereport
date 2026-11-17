@@ -47,6 +47,24 @@ For someone who just wants to run it on a paper with a top model. Copy each line
 
 `my_paper.zip` can be a .zip of your LaTeX folder, a single `.tex` file or a PDF. Leave out `--journal` if you have no target journal.
 
+## Run it on a ChatGPT or Claude plan (no API key)
+
+If you pay for ChatGPT (Plus or Pro) or Claude (Pro or Max), you can run FreeReport through that plan's coding assistant instead of an API key: **Codex** for ChatGPT, **Claude Code** for Claude. The assistant does the reviewers' work and FreeReport builds the same report. Nothing extra is charged; it uses your plan's allowance.
+
+1. Install the assistant and sign in with your plan:
+   - ChatGPT: install Codex (https://developers.openai.com/codex), then run `codex` and choose "Sign in with ChatGPT".
+   - Claude: install Claude Code (https://claude.com/claude-code), then run `claude` and sign in with your Claude account.
+2. Get FreeReport (first time: `git clone https://github.com/alemarty/freereport.git`, then `cd freereport` and `pip install -e .`; later: `git pull` and `pip install -e .`).
+3. Open the assistant **inside the `freereport` folder** (`codex` or `claude`) and ask, for example:
+   > Check my paper C:\Users\me\paper.zip with the council, deepdive and blindspot, for the Journal of International Economics.
+4. It follows the instructions in `AGENTS.md`: it runs `freereport assistant`, does each task it is given, saves the answer and runs it again, until it prints `DONE`. The report is in `reports/`.
+
+Good to know:
+- A full run (all options) has 13 steps and reads the whole paper at each one, so it can use a large share of a plan's allowance; Pro or Max plans have more room. If the limit is reached, ask again later: the answers so far are kept in `freereport-work/` and it continues where it stopped.
+- Use the most capable model your plan offers (in Codex and Claude Code you can pick it with `/model`).
+- Results can vary a bit more between runs than with the API version, because the assistant runs the steps itself.
+- You can also run the loop by hand: `freereport assistant paper.zip --council` prints the next task file and where to save the answer.
+
 ## Install
 
 You need Python 3.10 or newer.
