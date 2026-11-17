@@ -36,7 +36,9 @@ def test_a_failed_run_is_resumed_without_paying_again(monkeypatch, tmp_path, cap
     fail["synthesis"], asked[:] = False, []
     assert cli.main(args) == 0
     assert asked == ["synthesis"]  # the two finished steps came from disk
-    assert "already paid" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "already paid" in out and "DONE. " in out and "sample_paper.pdf" in out
+    assert "in total = $" in out and "paid by earlier runs for the steps reused" in out
     assert (tmp_path / "sample_paper.json").is_file() and not (tmp_path / steps.FOLDER).exists()
 
 
