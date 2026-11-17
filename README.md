@@ -299,4 +299,4 @@ The tests use a fake model, so they cost nothing.
 
 ## License
 
-MIT
+All rights reserved. You may download and run FreeReport to check your own papers, and read the code, but not copy, change, redistribute or sell it, or build a product or service on it, without written permission. See [LICENSE](LICENSE).
