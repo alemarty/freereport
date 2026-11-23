@@ -253,6 +253,10 @@ def _assistant(args) -> int:
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
     stem = args.out / _stem(args.paper)
+    checks = work / "verification.md"
+    if checks.exists():  # the assistant's code and output, kept beside the report rather than in it
+        result.verification = f"{stem.name}_verification.md"
+        (args.out / result.verification).write_text(checks.read_text(encoding="utf-8"), encoding="utf-8")
     stem.with_suffix(".md").write_text(to_markdown(result, backend.usage), encoding="utf-8")
     stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
     to_pdf(result, backend.usage, stem.with_suffix(".pdf"))

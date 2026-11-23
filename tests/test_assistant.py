@@ -44,3 +44,20 @@ def test_assistant_mode_runs_the_council_with_a_journal(tmp_path, capsys):
     assert code == 0 and steps[-1] == "council_executive" and len(steps) == 9
     assert "JIE" in (work / "tasks" / "council_executive.md").read_text()
     assert "### Fit with JIE" in (tmp_path / "r" / "sample_paper.md").read_text()
+
+
+def test_assistant_keeps_the_verification_file_beside_the_report(tmp_path, capsys):
+    work, out, fake = tmp_path / "work", tmp_path / "reports", FakeBackend()
+    argv = ["assistant", str(SAMPLE), "--work", str(work), "--out", str(out)]
+    while cli.main(argv) == 3:
+        label = capsys.readouterr().out.split("): ")[1].split("\n")[0]
+        answer = fake.ask(label, "", "", {})
+        if label == "synthesis":
+            answer["checked_correct"] = ["the expansion in Eq. (2)"]
+        (work / "answers" / f"{label}.json").write_text(json.dumps(answer))
+        (work / "verification.md").write_text("## adversary M1\n    print((1+2)**2)\n    9\n")
+    md = (out / "sample_paper.md").read_text()
+    assert (out / "sample_paper_verification.md").read_text().startswith("## adversary M1")
+    assert "sample_paper_verification.md" in md and "print(" not in md
+    assert "### Checked and found correct\n\n- the expansion in Eq. (2)" in md
+    assert md.index("### Main comments") < md.index("Missing 2ab term")

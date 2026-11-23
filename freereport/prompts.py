@@ -50,6 +50,8 @@ For each candidate, go back to the manuscript and re-check it independently:
   cause, and mark the others duplicate_of it, so the author reads each problem once;
 - set the final severity and confidence yourself.
 Return one verdict per candidate id, then a short overall summary for the author: plain prose that does not cite candidate ids (the author never sees them).
+Finally list in checked_correct the important equations, derivations and numbers that you re-checked and that hold, so the
+author also learns what is fine.
 
 CANDIDATE FINDINGS (JSON):
 {candidates}"""

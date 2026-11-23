@@ -39,4 +39,16 @@ time and builds the report at the end.
 - Show the working (the calculation or logical steps) so a human can verify each finding in a minute.
 - A run has 3 to 13 steps and can be long. Keep going until `DONE` unless the person stops you; if your
   plan's limit is reached, the saved answers are kept and the same command continues where it stopped.
+- **The report is the one `freereport assistant` writes.** Do not write a report of your own; everything
+  the person needs goes into the answers, which the command turns into the report.
+- Fill `how_checked` on every finding with one short line ("recomputed from Table 3", "re-derived Eq. (7)",
+  "read from the bars of Figure 5, approximate").
+- If you run code or do longer calculations to check something, do not put them in the answers. Append
+  them to `verification.md` in the work folder (the folder that holds `tasks/` and `answers/`), under a
+  heading naming the step and finding id, with the code and its output. It is saved beside the report
+  as `<paper>_verification.md`, so anyone can re-run a check that is disputed.
+- Keep to each step's role. The checker steps report errors that can be shown from the paper (math,
+  numbers, internal consistency). Doubts about the research design, identification or interpretation
+  belong to the council steps; if the council is not part of the run, leave them out.
+- Fill `checked_correct` in the synthesis step with the important results you re-checked and that hold.
 - Do not change the code in this repository to get a run through.

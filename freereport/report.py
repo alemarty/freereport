@@ -44,6 +44,7 @@ def _about(result: AuditResult, usage: Usage, kept, merged, rejected) -> str:
         f"{len(kept)} comment(s) reported, {len(merged)} repeat(s) merged into them, {len(rejected)} candidate(s) rejected on re-checking.",
         *([f"Cost about ${cost:.2f}."] if cost is not None else []),
         "Each reviewer's own notes, the rejected candidates and the final checker's notes are in the .json file.",
+        *([f"The checks behind each comment (code and output) are in {result.verification}."] if result.verification else []),
     ]
     return " ".join(parts)
 
@@ -79,7 +80,16 @@ def _also_at(f, merged) -> str:
 
 def _meta(f, v, merged) -> str:
     also = _also_at(f, merged)
-    return " · ".join([v.severity.upper(), f.category, *_where(f), *([f"also at {also}"] if also else [])])
+    sure = [] if v.confidence == "high" else [f"{v.confidence} confidence"]
+    return " · ".join([v.severity.upper(), f.category, *_where(f), *sure, *([f"also at {also}"] if also else [])])
+
+
+def _groups(kept) -> list[tuple[str, list]]:
+    """Comments split into main (critical and major) and minor, keeping their numbers."""
+    numbered = list(enumerate(kept, 1))
+    main = [(n, fv) for n, fv in numbered if fv[1].severity != "minor"]
+    minor = [(n, fv) for n, fv in numbered if fv[1].severity == "minor"]
+    return [(h, g) for h, g in (("Main comments", main), ("Minor comments", minor)) if g]
 
 
 _COUNCIL_NOTE = ("From the reviewer council: five reviewers with different angles, merged by a chair into one view. "
@@ -113,21 +123,26 @@ def to_markdown(result: AuditResult, usage: Usage) -> str:
               "Treat them as leads to verify, not verdicts.*", ""]
     if not kept:
         lines += ["No issues survived the final check.", ""]
-    for n, (f, v) in enumerate(kept, 1):
-        flag = "" if _quote_ok(result, f) else " · ⚠️ quote not found in the paper's text, check the location by hand"
-        lines += [
-            f"### #{n} {_headline(f)}",
-            "",
-            f"*{_meta(f, v, merged)}*{flag}",
-            "",
-            f"> {f.quote}",
-            "",
-            *([f.problem, ""] if f.title else []),
-            f"**Check:** {f.check}",
-            "",
-            f"**Suggested fix:** {f.suggested_fix}",
-            "",
-        ]
+    if result.synthesis.checked_correct:
+        lines += ["### Checked and found correct", ""] + [f"- {x}" for x in result.synthesis.checked_correct] + [""]
+    for heading, group in _groups(kept):
+        lines += [f"### {heading}", ""]
+        for n, (f, v) in group:
+            flag = "" if _quote_ok(result, f) else " · ⚠️ quote not found in the paper's text, check the location by hand"
+            lines += [
+                f"#### #{n} {_headline(f)}",
+                "",
+                f"*{_meta(f, v, merged)}*{flag}",
+                "",
+                f"> {f.quote}",
+                "",
+                *([f.problem, ""] if f.title else []),
+                f"**Check:** {f.check}",
+                "",
+                f"**Suggested fix:** {f.suggested_fix}",
+                "",
+                *([f"*How checked:* {f.how_checked}", ""] if f.how_checked else []),
+            ]
     lines += ["## About this report", "", _about(result, usage, kept, merged, rejected), ""]
     return "\n".join(lines)
 
@@ -166,6 +181,7 @@ h3 { font-size: 11.5pt; color: #111827; margin: 14pt 0 3pt 0; }
 .excerpt { font-style: italic; color: #374151; border-left: 3px solid #d1d5db; padding: 2pt 8pt; margin: 5pt 0; }
 .small { font-size: 9pt; color: #4b5563; }
 .support { font-size: 8.5pt; color: #6b7280; margin-top: 1pt; }
+h2.group { font-size: 12.5pt; margin-top: 16pt; }
 """
 
 
@@ -203,17 +219,24 @@ def to_html(result: AuditResult, usage: Usage) -> str:
             '<p class="note">Each comment quotes the paper so you can check it yourself. Treat them as leads to verify, not verdicts.</p>']
     if not kept:
         out.append("<p>No issues survived the final check.</p>")
-    for n, (f, v) in enumerate(kept, 1):
-        out += [
-            f'<h3 class="comment">#{n} {escape(_headline(f))}</h3>',
-            f'<p class="meta"><span class="{v.severity}">{v.severity.upper()}</span>{escape(_meta(f, v, merged)[len(v.severity):])}</p>',
-        ]
-        if not _quote_ok(result, f):
-            out.append('<p class="warn">Quote not found in the paper\'s text: check the location by hand.</p>')
-        out.append(f'<p class="excerpt">{escape(f.quote)}</p>')
-        if f.title:
-            out.append(f"<p>{escape(f.problem)}</p>")
-        out += [f'<p class="small"><b>Check:</b> {escape(f.check)}</p>', _p("Suggested fix:", f.suggested_fix)]
+    if result.synthesis.checked_correct:
+        out.append("<h3>Checked and found correct</h3>")
+        out += [f'<p class="item">• {escape(x)}</p>' for x in result.synthesis.checked_correct]
+    for heading, group in _groups(kept):
+        out.append(f'<h2 class="group">{escape(heading)}</h2>')
+        for n, (f, v) in group:
+            out += [
+                f'<h3 class="comment">#{n} {escape(_headline(f))}</h3>',
+                f'<p class="meta"><span class="{v.severity}">{v.severity.upper()}</span>{escape(_meta(f, v, merged)[len(v.severity):])}</p>',
+            ]
+            if not _quote_ok(result, f):
+                out.append('<p class="warn">Quote not found in the paper\'s text: check the location by hand.</p>')
+            out.append(f'<p class="excerpt">{escape(f.quote)}</p>')
+            if f.title:
+                out.append(f"<p>{escape(f.problem)}</p>")
+            out += [f'<p class="small"><b>Check:</b> {escape(f.check)}</p>', _p("Suggested fix:", f.suggested_fix)]
+            if f.how_checked:
+                out.append(f'<p class="support">How checked: {escape(f.how_checked)}</p>')
     out += ["<h2>About this report</h2>", f'<p class="small">{escape(_about(result, usage, kept, merged, rejected))}</p>']
     return "<body>" + "\n".join(out) + "</body>"
 

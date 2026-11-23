@@ -61,6 +61,7 @@ If you pay for ChatGPT (Plus or Pro) or Claude (Pro or Max), you can run FreeRep
 
 Good to know:
 - All options work: `--deepdive`, `--blindspot`, `--council` and `--journal`. The basic run is 3 steps; with every option it is 13, and each step reads the whole paper, so a full run can use a large share of a plan's allowance (Pro or Max plans have more room). For a lighter run, leave out the council. If the limit is reached, ask again later: the answers so far are kept in `freereport-work/` and it continues where it stopped.
+- If the assistant runs code to check a point, that code and its output are saved beside the report as `<paper>_verification.md` instead of filling the PDF; each comment says in one line how it was checked.
 - Use the most capable model your plan offers (in Codex and Claude Code you can pick it with `/model`).
 - Results can vary a bit more between runs than with the API version, because the assistant runs the steps itself.
 - You can also run the loop by hand: `freereport assistant paper.zip --blindspot` prints the next task file and where to save the answer.
