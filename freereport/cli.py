@@ -153,9 +153,10 @@ def main(argv: list[str] | None = None) -> int:
     helper.add_argument("paper", type=Path, help="PDF, LaTeX (.tex) or source bundle (.zip / .tar.gz).")
     helper.add_argument("--work", type=Path, help="Folder for the tasks and answers (default: freereport-work/<paper name>/).")
     helper.add_argument("--out", type=Path, default=Path("reports"), help="Folder for the report (default: reports/).")
-    # No council or journal here: they add 6 long steps, too much for most plans' limits.
     helper.add_argument("--deepdive", action="store_true", help="Slower, exhaustive checking: each checker goes through the paper in two halves.")
     helper.add_argument("--blindspot", action="store_true", help="Each checker re-scans its own draft for missed assumptions and gaps.")
+    helper.add_argument("--council", action="store_true", help="Add the council's opinion of the paper as a whole (6 more steps).")
+    helper.add_argument("--journal", default="", help='Target journal, e.g. --journal "Nature Communications": the council also judges fit (turns on --council).')
 
     args = parser.parse_args(argv)
     if args.command == "assistant":
@@ -235,7 +236,8 @@ def main(argv: list[str] | None = None) -> int:
 def _assistant(args) -> int:
     from . import assistant
 
-    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot)
+    opts = Options(deepdive=args.deepdive, blindspot=args.blindspot, council=args.council or bool(args.journal),
+                   journal=args.journal)
     work = args.work or Path("freereport-work") / _stem(args.paper)
     try:
         result, backend = assistant.run(load(args.paper), opts, work)
@@ -251,6 +253,10 @@ def _assistant(args) -> int:
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
     stem = args.out / _stem(args.paper)
+    checks = work / "verification.md"
+    if checks.exists():  # the assistant's code and output, kept beside the report rather than in it
+        result.verification = f"{stem.name}_verification.md"
+        (args.out / result.verification).write_text(checks.read_text(encoding="utf-8"), encoding="utf-8")
     stem.with_suffix(".md").write_text(to_markdown(result, backend.usage), encoding="utf-8")
     stem.with_suffix(".json").write_text(to_json(result, backend.usage), encoding="utf-8")
     to_pdf(result, backend.usage, stem.with_suffix(".pdf"))

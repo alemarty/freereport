@@ -22,6 +22,8 @@ class Finding(BaseModel):
     problem: str = Field(description="One or two sentences: what is wrong.")
     check: str = Field(description="The step-by-step working that shows it is wrong, so a human can verify it.")
     suggested_fix: str
+    how_checked: str = Field("", description="One short line on how you verified it, e.g. 'recomputed from Table 3', "
+                             "'re-derived Eq. (7) by hand', 'read from the bars of Figure 5 (approximate)'.")
     severity: Severity
     confidence: Confidence
 
@@ -45,6 +47,8 @@ class Verdict(BaseModel):
 class Synthesis(BaseModel):
     verdicts: list[Verdict]
     summary: str = Field(description="3-6 sentence overall assessment of the paper's correctness.")
+    checked_correct: list[str] = Field([], description="Up to 10 important equations, derivations or numbers that were "
+                                       "re-checked and hold, each in one short line, e.g. 'the step from (29) to (30)'.")
 
 
 def strict_schema(model: type[BaseModel]) -> dict:

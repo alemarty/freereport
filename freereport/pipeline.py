@@ -47,6 +47,7 @@ class AuditResult:
     council: dict[str, CouncilView] = field(default_factory=dict)
     decision: CouncilDecision | None = None
     title: str = ""  # the paper's own title, when the source has one
+    verification: str = ""  # file with the checks behind the comments, when the assistant kept one
 
     def kept(self) -> list[tuple[Finding, Verdict]]:
         by_id = {f.id: f for f in self.candidates}
