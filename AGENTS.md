@@ -7,7 +7,9 @@ time and builds the report at the end.
 
 ## When the person asks you to check a paper
 
-1. **Install once**, if `freereport --help` fails: `pip install -e .`
+1. **Update first**, before starting a new paper (not in the middle of a run): run `git pull`, then
+   `pip install -e .`. This gets the latest version of FreeReport. If `git pull` fails (no internet, local
+   changes), tell the person and continue with the version they have.
 2. **Start**, with the paper path and the options the person asked for:
    ```bash
    freereport assistant PATH/TO/paper.zip --deepdive --blindspot --council --journal "Journal Name"

@@ -14,6 +14,8 @@ It runs three AI "agents" (separate AI calls, each with its own job):
 
 Every reported issue gives a **page number, a location and an exact quote**, so you can check it yourself in a minute. The tool also confirms each quote really exists in the PDF; if it can't, the report marks it with ⚠️.
 
+> **Before every new check, update FreeReport.** Inside the `freereport` folder, run `git pull` and then `pip install -e .`. Without this you run an old version and miss the latest fixes. (If you use Codex or Claude Code, the assistant does this for you.)
+
 ## Quick start (best model)
 
 For someone who just wants to run it on a paper with a top model. Copy each line into a terminal (Terminal on macOS, PowerShell on Windows).
@@ -54,7 +56,7 @@ If you pay for ChatGPT (Plus or Pro) or Claude (Pro or Max), you can run FreeRep
 1. Install the assistant and sign in with your plan:
    - ChatGPT: install Codex (https://developers.openai.com/codex), then run `codex` and choose "Sign in with ChatGPT".
    - Claude: install Claude Code (https://claude.com/claude-code), then run `claude` and sign in with your Claude account.
-2. Get FreeReport (first time: `git clone https://github.com/alemarty/freereport.git`, then `cd freereport` and `pip install -e .`; later: `git pull` and `pip install -e .`).
+2. Get FreeReport (first time: `git clone https://github.com/alemarty/freereport.git`, then `cd freereport` and `pip install -e .`). **Before each new paper**, update it with `git pull` and `pip install -e .` (the assistant also does this itself at the start).
 3. Open the assistant **inside the `freereport` folder** (`codex` or `claude`) and ask, for example:
    > Check my paper C:\Users\me\paper.zip with deepdive, blindspot and the council, for the Journal of International Economics.
 4. It follows the instructions in `AGENTS.md`: it runs `freereport assistant`, does each task it is given, saves the answer and runs it again, until it prints `DONE`. The report is in `reports/`.
