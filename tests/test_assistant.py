@@ -31,7 +31,16 @@ def test_assistant_mode_explains_a_bad_answer(tmp_path, capsys):
     assert "does not follow the schema" in capsys.readouterr().err
 
 
-def test_assistant_mode_has_no_council(capsys):
-    import pytest
-    with pytest.raises(SystemExit):
-        cli.main(["assistant", str(SAMPLE), "--council"])
+def test_assistant_mode_runs_the_council_with_a_journal(tmp_path, capsys):
+    work, fake = tmp_path / "work", FakeBackend()
+    argv = ["assistant", str(SAMPLE), "--work", str(work), "--out", str(tmp_path / "r"), "--journal", "JIE"]
+    steps = []
+    while (code := cli.main(argv)) == 3:
+        label = capsys.readouterr().out.split("): ")[1].split("\n")[0]
+        name = label.replace(" ", "_")
+        task = (work / "tasks" / f"{name}.md").read_text()
+        (work / "answers" / f"{name}.json").write_text(json.dumps(fake.ask(label, "", task, {})))
+        steps.append(label)
+    assert code == 0 and steps[-1] == "council_executive" and len(steps) == 9
+    assert "JIE" in (work / "tasks" / "council_executive.md").read_text()
+    assert "### Fit with JIE" in (tmp_path / "r" / "sample_paper.md").read_text()
